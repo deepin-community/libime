@@ -1,0 +1,20 @@
+From: Shengjing Zhu <zhsj@debian.org>
+Date: Sun, 27 Sep 2020 02:01:25 +0800
+Subject: use system library in kenlm
+
+Last-Update: 2022-08-31
+---
+ src/libime/core/kenlm/lm/query_main.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/libime/core/kenlm/lm/query_main.cc b/src/libime/core/kenlm/lm/query_main.cc
+index 4941128..b1a862e 100644
+--- a/src/libime/core/kenlm/lm/query_main.cc
++++ b/src/libime/core/kenlm/lm/query_main.cc
+@@ -1,5 +1,5 @@
+ #include "ngram_query.hh"
+-#include "../util/getopt.hh"
++#include <getopt.h>
+ 
+ #ifdef WITH_NPLM
+ #include "wrappers/nplm.hh"

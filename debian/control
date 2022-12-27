@@ -1,0 +1,141 @@
+Source: libime
+Section: libs
+Priority: optional
+Maintainer: Debian Input Method Team <debian-input-method@lists.debian.org>
+Uploaders:
+ Boyuan Yang <byang@debian.org>,
+Build-Depends:
+ cmake (>= 3.7),
+ debhelper-compat (= 13),
+ extra-cmake-modules,
+ libboost-dev (>= 1.61),
+ libboost-filesystem-dev (>= 1.61),
+ libboost-iostreams-dev (>= 1.61),
+ libdouble-conversion-dev (>= 3.1.5-5~),
+ libfcitx5utils-dev (>= 5.0.11),
+Standards-Version: 4.6.1
+Rules-Requires-Root: no
+Homepage: https://github.com/fcitx/libime
+Vcs-Git: https://salsa.debian.org/input-method-team/libime.git
+Vcs-Browser: https://salsa.debian.org/input-method-team/libime
+
+Package: libime-bin
+Architecture: any
+Section: utils
+Depends:
+ libimecore0 (= ${binary:Version}),
+ libimepinyin0 (= ${binary:Version}),
+ libimetable0 (= ${binary:Version}),
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Generic Input Method Implementation (tools)
+ Libime is a generic input method implementation library. It is mainly
+ used by fcitx5, the next generation of fcitx input method framework.
+ .
+ This package provides tools provided by libime.
+
+Package: libime-data
+Architecture: all
+Multi-Arch: foreign
+Section: utils
+Depends:
+ libime-data-language-model (<< ${source:Version}.1~),
+ libime-data-language-model (>= ${source:Version}),
+ ${misc:Depends},
+Description: Generic Input Method Implementation library (data files)
+ Libime is a generic input method implementation library. It is mainly
+ used by fcitx5, the next generation of fcitx input method framework.
+ .
+ This package provides architecture-independent data files.
+
+Package: libime-data-language-model
+Architecture: any
+Multi-Arch: same
+Section: utils
+Depends:
+ ${misc:Depends},
+Breaks:
+ libimecore0 (<< 1.0.1-2),
+Replaces:
+ libimecore0 (<< 1.0.1-2),
+Description: Generic Input Method Implementation library (language model)
+ Libime is a generic input method implementation library. It is mainly
+ used by fcitx5, the next generation of fcitx input method framework.
+ .
+ This package provides architecture-dependent language models.
+
+Package: libimecore-dev
+Architecture: any
+Multi-Arch: same
+Section: libdevel
+Depends:
+ libimecore0 (= ${binary:Version}),
+ ${misc:Depends},
+Description: Generic Input Method Implementation (core dev files)
+ Libime is a generic input method implementation library. It is mainly
+ used by fcitx5, the next generation of fcitx input method framework.
+ .
+ This package provides development files for core library.
+
+Package: libimecore0
+Architecture: any
+Multi-Arch: same
+Depends:
+ libime-data (= ${source:Version}),
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Generic Input Method Implementation (core library)
+ Libime is a generic input method implementation library. It is mainly
+ used by fcitx5, the next generation of fcitx input method framework.
+ .
+ This package provides its core library.
+
+Package: libimepinyin-dev
+Architecture: any
+Multi-Arch: same
+Section: libdevel
+Depends:
+ libimepinyin0 (= ${binary:Version}),
+ ${misc:Depends},
+Description: Generic Input Method Implementation (pinyin dev files)
+ Libime is a generic input method implementation library. It is mainly
+ used by fcitx5, the next generation of fcitx input method framework.
+ .
+ This package provides development files for pinyin library.
+
+Package: libimepinyin0
+Architecture: any
+Multi-Arch: same
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Generic Input Method Implementation (pinyin library)
+ Libime is a generic input method implementation library. It is mainly
+ used by fcitx5, the next generation of fcitx input method framework.
+ .
+ This package provides its pinyin library.
+
+Package: libimetable-dev
+Architecture: any
+Multi-Arch: same
+Section: libdevel
+Depends:
+ libimetable0 (= ${binary:Version}),
+ ${misc:Depends},
+Description: Generic Input Method Implementation (table dev files)
+ Libime is a generic input method implementation library. It is mainly
+ used by fcitx5, the next generation of fcitx input method framework.
+ .
+ This package provides development files for table library.
+
+Package: libimetable0
+Architecture: any
+Multi-Arch: same
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Generic Input Method Implementation (table library)
+ Libime is a generic input method implementation library. It is mainly
+ used by fcitx5, the next generation of fcitx input method framework.
+ .
+ This package provides its table library.

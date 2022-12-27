@@ -1,0 +1,3 @@
+usr/include/LibIME/libime/pinyin/*
+usr/lib/*/cmake/LibIMEPinyin/*.cmake
+usr/lib/*/libIMEPinyin.so

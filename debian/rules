@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+	    -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
+	    $(NULL)
+
+ifneq (,$(filter $(DEB_HOST_ARCH), mips64el mipsel))
+override_dh_auto_test:
+	dh_auto_test -- ARGS+='--exclude-regex \(testtrie\)'
+endif

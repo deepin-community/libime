@@ -1,0 +1,245 @@
+libime (1.0.16-2) unstable; urgency=medium
+
+  * debian/upstream/metadata: Add Repository and Repository-Browse
+    fields.
+
+ -- Boyuan Yang <byang@debian.org>  Wed, 30 Nov 2022 13:49:27 -0500
+
+libime (1.0.16-1) unstable; urgency=medium
+
+  * New upstream release.
+    + Fix compatibility with libboost 1.81.
+
+ -- Boyuan Yang <byang@debian.org>  Tue, 29 Nov 2022 13:34:34 -0500
+
+libime (1.0.15-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Boyuan Yang <byang@debian.org>  Wed, 23 Nov 2022 10:23:08 -0500
+
+libime (1.0.14-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Use upstream _dict tarball.
+  * debian/copyright: Update information.
+  * debian/patches: Refresh patches.
+
+ -- Boyuan Yang <byang@debian.org>  Wed, 31 Aug 2022 13:42:15 -0400
+
+libime (1.0.13-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Refresh data and submodule components.
+  * debian/control: Drop build-dependency on python3.
+  * debian/watch: Use upstream _dict tarball.
+  * debian/copyright: Updated.
+
+ -- Boyuan Yang <byang@debian.org>  Wed, 06 Jul 2022 15:13:19 -0400
+
+libime (1.0.12-2) unstable; urgency=medium
+
+  * debian/rules: Pass -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON via
+    dh_auto_configure override for reproducibility. (Closes: #1001866)
+
+ -- Boyuan Yang <byang@debian.org>  Sat, 28 May 2022 19:42:14 -0400
+
+libime (1.0.12-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Boyuan Yang <byang@debian.org>  Tue, 24 May 2022 18:17:07 -0400
+
+libime (1.0.11-1) unstable; urgency=medium
+
+  * New upstream release 1.0.11.
+
+ -- Boyuan Yang <byang@debian.org>  Fri, 07 Jan 2022 17:13:26 -0500
+
+libime (1.0.10-1) unstable; urgency=medium
+
+  * New upstream release 1.0.10.
+  * debian/control: Require fcitx5 (>= 5.0.10).
+
+ -- Boyuan Yang <byang@debian.org>  Tue, 14 Dec 2021 13:54:38 -0500
+
+libime (1.0.9-1) unstable; urgency=medium
+
+  * New upstream release.
+  * debian/patches: Refresh patches.
+  * debian/rules: Dynamically generate src/libime/core/kenlm symlink
+    immediately before configure, instead of including it in patch.
+    This circumvents some corner cases with MUT + git-buildpackage
+    combination.
+
+ -- Boyuan Yang <byang@debian.org>  Tue, 23 Nov 2021 15:24:18 -0500
+
+libime (1.0.8-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release
+
+ -- Shengjing Zhu <zhsj@debian.org>  Fri, 01 Oct 2021 02:26:08 +0800
+
+libime (1.0.7-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release
+  * Update Standards-Version to 4.6.0 (no changes)
+
+ -- Shengjing Zhu <zhsj@debian.org>  Wed, 25 Aug 2021 02:29:52 +0800
+
+libime (1.0.4-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release
+
+ -- Shengjing Zhu <zhsj@debian.org>  Fri, 19 Feb 2021 15:14:03 +0800
+
+libime (1.0.3-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release
+  * Update Standards-Version to 4.5.1 (no changes)
+  * Add libboost-filesystem-dev to Build-Depends
+
+ -- Shengjing Zhu <zhsj@debian.org>  Sat, 16 Jan 2021 01:25:54 +0800
+
+libime (1.0.2-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release
+  * Fix uscan watch file syntax
+  * Refresh patches
+
+ -- Shengjing Zhu <zhsj@debian.org>  Sat, 05 Dec 2020 18:21:19 +0800
+
+libime (1.0.1-3) unstable; urgency=medium
+
+  * Team upload.
+  * libime-data-language-model should Breaks+Replaces libimecore0
+    Closes: #974044
+
+ -- Shengjing Zhu <zhsj@debian.org>  Mon, 09 Nov 2020 22:36:57 +0800
+
+libime (1.0.1-2) unstable; urgency=medium
+
+  * Team upload.
+  * Add libime-data-language-model package
+
+ -- Shengjing Zhu <zhsj@debian.org>  Sat, 07 Nov 2020 22:26:34 +0800
+
+libime (1.0.1-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release
+  * Bump libfcitx5utils-dev to 5.0.1
+  * Fix library install patch for new version
+
+ -- Shengjing Zhu <zhsj@debian.org>  Sat, 07 Nov 2020 00:48:37 +0800
+
+libime (0.0~git20201029.22106dc-3) unstable; urgency=medium
+
+  * Team upload.
+  * Disable testtrie on mipsx again, still failing in new version.
+
+ -- Shengjing Zhu <zhsj@debian.org>  Sun, 01 Nov 2020 12:57:04 +0800
+
+libime (0.0~git20201029.22106dc-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream snapshot.
+  * Use MUT for data and kenlm source.
+  * Do not disable testtrie on mips* and hppa. The problem
+    should be fixed with refreshed kenlm code.
+  * Bump libfcitx5utils-dev to 0.0~git20201030
+
+ -- Shengjing Zhu <zhsj@debian.org>  Sat, 31 Oct 2020 22:51:05 +0800
+
+libime (0.0~git20200823.dff3ea6-2) unstable; urgency=medium
+
+  * Team upload.
+  * Disable testtrie on mipsx and hppa
+
+ -- Shengjing Zhu <zhsj@debian.org>  Thu, 27 Aug 2020 02:38:52 +0800
+
+libime (0.0~git20200823.dff3ea6-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream snapshot.
+  * as-needed LDFLAGS is not needed since bullseye
+  * Changes architecture from linux-any to any
+  * Refresh patches
+  * Update bundled dict.utf8
+  * Tests on i386 are fixed
+
+ -- Shengjing Zhu <zhsj@debian.org>  Wed, 26 Aug 2020 11:56:39 +0800
+
+libime (0.0~git20200626.2c85668-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream snapshot.
+  * Bump debhelper-compat to 13 and clean up d/rules
+  * Update dict.utf8 to 20200613
+  * Refresh patches
+  * Add libboost-iostreams-dev to Build-Depends
+  * Bump libfcitx5utils-dev to 0.0~git20200626
+
+ -- Shengjing Zhu <zhsj@debian.org>  Thu, 02 Jul 2020 11:44:03 +0800
+
+libime (0.0~git20200318.a78efdf-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream snapshot.
+  * Ignore failing test on i386 for now
+  * Bump fcitx version to 0.0~git20200323
+
+ -- Shengjing Zhu <zhsj@debian.org>  Tue, 24 Mar 2020 03:38:39 +0800
+
+libime (0.0~git20200310.fdce632-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream snapshot.
+  * Stop repacking upstream tarball.
+    Move extra sources to debian directory.
+  * Use cmake config from system libdouble-conversion-dev.
+  * Bump libfcitx5utils-dev to 0.0~git20200311.
+
+ -- Shengjing Zhu <zhsj@debian.org>  Fri, 13 Mar 2020 00:19:32 +0800
+
+libime (0.0~git20191230.5b6e890+ds2-1) unstable; urgency=medium
+
+  * ds: Let src:libime to provide required dictionaries.
+  * debian/control:
+    - Drop build-dependency on fcitx5-data.
+    + Bump Standards-Version to 4.5.0.
+    + Mark architecture-dependent packages as linux-any.
+
+ -- Boyuan Yang <byang@debian.org>  Wed, 05 Feb 2020 16:37:00 -0500
+
+libime (0.0~git20191230.5b6e890+ds1-2) unstable; urgency=high
+
+  * debian/control: Let the core library depends on libime-data
+    data package. This is needed by fcitx5-chinese-addons.
+
+ -- Boyuan Yang <byang@debian.org>  Sun, 19 Jan 2020 17:33:53 -0500
+
+libime (0.0~git20191230.5b6e890+ds1-1) unstable; urgency=medium
+
+  * New upstream snapshot.
+
+ -- Boyuan Yang <byang@debian.org>  Thu, 02 Jan 2020 20:14:32 -0800
+
+libime (0.0~git20191129.48c56a4+ds1-1) unstable; urgency=high
+
+  * New upstream snapshot.
+  * Source-only upload to allow testing migration.
+  * debian/control: Mark dev packages as M-A: same.
+
+ -- Boyuan Yang <byang@debian.org>  Fri, 27 Dec 2019 20:50:22 -0800
+
+libime (0.0~git20191103.442e091+ds2-1) unstable; urgency=medium
+
+  * Initial release. (Closes: #945850)
+
+ -- Boyuan Yang <byang@debian.org>  Fri, 29 Nov 2019 15:58:21 -0500
