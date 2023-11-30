@@ -12,8 +12,10 @@ Build-Depends:
  libboost-filesystem-dev (>= 1.61),
  libboost-iostreams-dev (>= 1.61),
  libdouble-conversion-dev (>= 3.1.5-5~),
- libfcitx5utils-dev (>= 5.0.11),
-Standards-Version: 4.6.1
+ libfcitx5utils-dev (>= 5.1~),
+ libzstd-dev,
+ pkg-config,
+Standards-Version: 4.6.2
 Rules-Requires-Root: no
 Homepage: https://github.com/fcitx/libime
 Vcs-Git: https://salsa.debian.org/input-method-team/libime.git
@@ -21,6 +23,7 @@ Vcs-Browser: https://salsa.debian.org/input-method-team/libime
 
 Package: libime-bin
 Architecture: any
+Multi-Arch: no
 Section: utils
 Depends:
  libimecore0 (= ${binary:Version}),

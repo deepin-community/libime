@@ -16,6 +16,8 @@
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/utf8.h>
 #include <iostream>
+#include <iterator>
+#include <unordered_set>
 
 namespace libime {
 
@@ -42,14 +44,18 @@ public:
     Lattice lattice_;
     PinyinMatchState matchState_;
     std::vector<SentenceResult> candidates_;
+    std::unordered_set<std::string> candidatesSet_;
     mutable bool candidatesToCursorNeedUpdate_ = true;
     mutable std::vector<SentenceResult> candidatesToCursor_;
+    mutable std::unordered_set<std::string> candidatesToCursorSet_;
     std::vector<fcitx::ScopedConnection> conn_;
 
     void clearCandidates() {
         candidates_.clear();
         candidatesToCursor_.clear();
         candidatesToCursorNeedUpdate_ = false;
+        candidatesSet_.clear();
+        candidatesToCursorSet_.clear();
     }
 
     void updateCandidatesToCursor() const {
@@ -61,16 +67,16 @@ public:
         auto start = q->selectedLength();
         auto currentCursor = q->cursor();
         candidatesToCursor_.clear();
-        std::unordered_set<std::string> dup;
+        candidatesToCursorSet_.clear();
         for (const auto &candidate : candidates_) {
             const auto &sentence = candidate.sentence();
             if (sentence.size() <= 1) {
                 auto text = candidate.toString();
-                if (dup.count(text)) {
+                if (candidatesToCursorSet_.count(text)) {
                     continue;
                 }
                 candidatesToCursor_.push_back(candidate);
-                dup.insert(std::move(text));
+                candidatesToCursorSet_.insert(std::move(text));
             } else {
                 auto newSentence = sentence;
                 while (!newSentence.empty() &&
@@ -82,11 +88,11 @@ public:
                     SentenceResult partial(newSentence,
                                            newSentence.back()->score());
                     auto text = partial.toString();
-                    if (dup.count(text)) {
+                    if (candidatesToCursorSet_.count(text)) {
                         continue;
                     }
                     candidatesToCursor_.push_back(partial);
-                    dup.insert(std::move(text));
+                    candidatesToCursorSet_.insert(std::move(text));
                 }
             }
         }
@@ -287,6 +293,11 @@ const std::vector<SentenceResult> &PinyinContext::candidates() const {
     return d->candidates_;
 }
 
+const std::unordered_set<std::string> &PinyinContext::candidateSet() const {
+    FCITX_D();
+    return d->candidatesSet_;
+}
+
 const std::vector<SentenceResult> &PinyinContext::candidatesToCursor() const {
     FCITX_D();
     if (cursor() == selectedLength() || cursor() == size()) {
@@ -294,6 +305,16 @@ const std::vector<SentenceResult> &PinyinContext::candidatesToCursor() const {
     }
     d->updateCandidatesToCursor();
     return d->candidatesToCursor_;
+}
+
+const std::unordered_set<std::string> &
+PinyinContext::candidatesToCursorSet() const {
+    FCITX_D();
+    if (cursor() == selectedLength() || cursor() == size()) {
+        return d->candidatesSet_;
+    }
+    d->updateCandidatesToCursor();
+    return d->candidatesToCursorSet_;
 }
 
 void PinyinContext::select(size_t idx) {
@@ -402,10 +423,9 @@ void PinyinContext::update() {
                                    d->ime_->frameSize(), &d->matchState_);
 
         d->clearCandidates();
-        std::unordered_set<std::string> dup;
         for (size_t i = 0, e = d->lattice_.sentenceSize(); i < e; i++) {
             d->candidates_.push_back(d->lattice_.sentence(i));
-            dup.insert(d->candidates_.back().toString());
+            d->candidatesSet_.insert(d->candidates_.back().toString());
         }
 
         const auto *bos = &graph.start();
@@ -429,12 +449,12 @@ void PinyinContext::update() {
                                 max = latticeNode.score();
                             }
                         }
-                        if (dup.count(latticeNode.word())) {
+                        if (d->candidatesSet_.count(latticeNode.word())) {
                             continue;
                         }
                         d->candidates_.push_back(
                             latticeNode.toSentenceResult(adjust));
-                        dup.insert(latticeNode.word());
+                        d->candidatesSet_.insert(latticeNode.word());
                     }
                 }
             }
@@ -446,11 +466,12 @@ void PinyinContext::update() {
                         latticeNode.score() > min &&
                         latticeNode.score() + d->ime_->maxDistance() > max) {
                         auto fullWord = latticeNode.fullWord();
-                        if (dup.count(fullWord)) {
+                        if (d->candidatesSet_.count(fullWord)) {
                             continue;
                         }
                         d->candidates_.push_back(
                             latticeNode.toSentenceResult(adjust));
+                        d->candidatesSet_.insert(fullWord);
                     }
                 }
             }
@@ -527,9 +548,9 @@ PinyinContext::preeditWithCursor(PinyinPreeditMode mode) const {
 
     if (!d->candidates_.empty()) {
         bool first = true;
-        for (const auto &s : d->candidates_[0].sentence()) {
-            for (auto iter = s->path().begin(),
-                      end = std::prev(s->path().end());
+        for (const auto &node : d->candidates_[0].sentence()) {
+            for (auto iter = node->path().begin(),
+                      end = std::prev(node->path().end());
                  iter < end; iter++) {
                 if (!first) {
                     ss += " ";
@@ -543,6 +564,10 @@ PinyinContext::preeditWithCursor(PinyinPreeditMode mode) const {
                 auto pinyin = d->segs_.segment(from, to);
                 MatchedPinyinSyllables syls;
                 if (mode == PinyinPreeditMode::Pinyin) {
+                    // The reason that we don't use fuzzy flag from option is
+                    // that we'd like to keep the preedit as is. Otherwise,
+                    // "qign" would be displayed as "qing", which would be
+                    // confusing to user about what is actually being typed.
                     syls = useShuangpin()
                                ? PinyinEncoder::shuangpinToSyllables(
                                      pinyin, *ime()->shuangpinProfile(),
@@ -552,14 +577,53 @@ PinyinContext::preeditWithCursor(PinyinPreeditMode mode) const {
                 }
                 std::string actualPinyin;
                 if (!syls.empty() && !syls.front().second.empty()) {
+                    std::string_view candidatePinyin =
+                        static_cast<const PinyinLatticeNode *>(node)
+                            ->encodedPinyin();
+                    auto nthPinyin = std::distance(node->path().begin(), iter);
+                    PinyinInitial bestInitial = syls[0].first;
+                    PinyinFinal bestFinal = syls[0].second[0].first;
+
+                    // Try to match the candidate syllables from all possible
+                    // none-fuzzy possible syls.
+                    if (static_cast<size_t>(nthPinyin * 2 + 2) <=
+                        candidatePinyin.size()) {
+                        auto candidateInitial = static_cast<PinyinInitial>(
+                            candidatePinyin[nthPinyin * 2]);
+                        auto candidateFinal = static_cast<PinyinFinal>(
+                            candidatePinyin[nthPinyin * 2 + 1]);
+
+                        bool found = false;
+                        for (const auto &initial : syls) {
+                            for (const auto &[final, fuzzy] : initial.second) {
+                                if (fuzzy) {
+                                    continue;
+                                }
+                                if (candidateInitial == initial.first &&
+                                    (final == PinyinFinal::Invalid ||
+                                     candidateFinal == final)) {
+                                    bestInitial = initial.first;
+                                    if (final != PinyinFinal::Invalid) {
+                                        bestFinal = final;
+                                    }
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (found) {
+                                break;
+                            }
+                        }
+                    }
+
                     actualPinyin = PinyinEncoder::initialFinalToPinyinString(
-                        syls[0].first, syls[0].second[0].first);
+                        bestInitial, bestFinal);
                     if (!useShuangpin()) {
                         matchPinyinCase(pinyin, actualPinyin);
                     }
                 }
                 if (!actualPinyin.empty()) {
-                    if (c >= from + len && c < to + len) {
+                    if (c > from + len && c <= to + len) {
                         if (useShuangpin()) {
                             switch (cursorInPinyin) {
                             case 0:
@@ -595,7 +659,7 @@ PinyinContext::preeditWithCursor(PinyinPreeditMode mode) const {
                     ss.append(pinyin.data(), pinyin.size());
                     resultSize += pinyin.size();
                 }
-                if (c >= from + len && c < to + len) {
+                if (c > from + len && c <= to + len) {
                     actualCursor = startPivot + cursorInPinyin;
                 }
             }
@@ -614,6 +678,21 @@ std::vector<std::string> PinyinContext::selectedWords() const {
         for (const auto &item : s) {
             if (!item.word_.word().empty()) {
                 newSentence.push_back(item.word_.word());
+            }
+        }
+    }
+    return newSentence;
+}
+
+std::vector<std::pair<std::string, std::string>>
+PinyinContext::selectedWordsWithPinyin() const {
+    FCITX_D();
+    std::vector<std::pair<std::string, std::string>> newSentence;
+    for (const auto &s : d->selected_) {
+        for (const auto &item : s) {
+            if (!item.word_.word().empty()) {
+                newSentence.emplace_back(item.word_.word(),
+                                         item.encodedPinyin_);
             }
         }
     }
@@ -643,15 +722,14 @@ std::string PinyinContext::candidateFullPinyin(size_t idx) const {
 
 std::string
 PinyinContext::candidateFullPinyin(const SentenceResult &candidate) const {
-    FCITX_D();
     std::string pinyin;
-    for (const auto &p : candidate.sentence()) {
-        if (!p->word().empty()) {
+    for (const auto &node : candidate.sentence()) {
+        if (!node->word().empty()) {
             if (!pinyin.empty()) {
                 pinyin.push_back('\'');
             }
             pinyin += PinyinEncoder::decodeFullPinyin(
-                static_cast<const PinyinLatticeNode *>(p)->encodedPinyin());
+                static_cast<const PinyinLatticeNode *>(node)->encodedPinyin());
         }
     }
     return pinyin;
@@ -690,7 +768,7 @@ bool PinyinContext::learnWord() {
     if (d->selected_.empty()) {
         return false;
     }
-    // don't learn single character.
+    // don't learn existing word.
     if (d->selected_.size() == 1 && d->selected_[0].size() == 1) {
         return false;
     }

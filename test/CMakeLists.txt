@@ -5,6 +5,7 @@ set(LIBIME_SINGLE_FILE_TEST
     testtable
     testpinyindata
     testpinyinencoder
+    testpinyinime_unit
     testinputbuffer
     testhistorybigram
     testshuangpinprofile
@@ -14,7 +15,9 @@ set(LIBIME_SINGLE_FILE_TEST
     testpinyincontext
     testpinyindictionary
     testprediction
+    testpinyinprediction
     testtableime_unit
+    testtablerule
     )
 
 foreach(TESTCASE ${LIBIME_SINGLE_FILE_TEST})

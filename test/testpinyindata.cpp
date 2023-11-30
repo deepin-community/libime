@@ -19,7 +19,7 @@ static std::string applyFuzzy(const std::string &str, PinyinFuzzyFlags flags) {
             result[result.size() - 2] = 'n';
             result[result.size() - 1] = 'g';
         }
-        if (boost::algorithm::ends_with(result, "ion")) {
+        if (boost::algorithm::ends_with(result, "on")) {
             result.push_back('g');
         }
         if (boost::algorithm::ends_with(result, "v")) {
@@ -27,6 +27,12 @@ static std::string applyFuzzy(const std::string &str, PinyinFuzzyFlags flags) {
         }
         if (boost::algorithm::ends_with(result, "ve")) {
             result[result.size() - 2] = 'u';
+        }
+        if (boost::algorithm::ends_with(result, "van")) {
+            result[result.size() - 3] = 'u';
+        }
+        if (boost::algorithm::ends_with(result, "vang")) {
+            result[result.size() - 4] = 'u';
         }
     }
 
@@ -149,5 +155,6 @@ int main() {
             std::cout << encode << "," << std::endl;
         }
     }
+    FCITX_ASSERT(getPinyinMapV2().count("zhaung"));
     return 0;
 }

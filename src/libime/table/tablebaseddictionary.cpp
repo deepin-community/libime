@@ -4,25 +4,32 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
+#include "libime/table/tablebaseddictionary.h"
 #include "autophrasedict.h"
 #include "constants.h"
 #include "libime/core/datrie.h"
 #include "libime/core/lattice.h"
+#include "libime/core/zstdfilter.h"
 #include "log.h"
 #include "tablebaseddictionary_p.h"
 #include "tabledecoder_p.h"
 #include "tableoptions.h"
 #include "tablerule.h"
 #include <boost/algorithm/string.hpp>
+#include <boost/iostreams/filtering_streambuf.hpp>
 #include <boost/range/adaptor/reversed.hpp>
 #include <cassert>
 #include <chrono>
 #include <cstring>
 #include <fcitx-utils/log.h>
+#include <fcitx-utils/stringutils.h>
 #include <fcitx-utils/utf8.h>
 #include <fstream>
+#include <istream>
 #include <set>
+#include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 namespace libime {
 
@@ -31,9 +38,9 @@ namespace {
 constexpr char keyValueSeparator = '\x01';
 // "fc" t"ab"l"e"
 constexpr uint32_t tableBinaryFormatMagic = 0x000fcabe;
-constexpr uint32_t tableBinaryFormatVersion = 0x1;
+constexpr uint32_t tableBinaryFormatVersion = 0x2;
 constexpr uint32_t userTableBinaryFormatMagic = 0x356fcabe;
-uint32_t userTableBinaryFormatVersion = 0x2;
+constexpr uint32_t userTableBinaryFormatVersion = 0x3;
 
 enum {
     STR_KEYCODE,
@@ -45,16 +52,17 @@ enum {
     STR_RULE,
     STR_PROMPT,
     STR_CONSTRUCTPHRASE,
+    STR_PHRASE,
     STR_LAST
 };
 
-enum class BuildPhase { PhaseConfig, PhaseRule, PhaseData };
+enum class BuildPhase { PhaseConfig, PhaseRule, PhaseData, PhasePhrase };
 
 const char *strConst[2][STR_LAST] = {
     {"键码=", "码长=", "规避字符=", "拼音=", "拼音长度=", "[数据]",
-     "[组词规则]", "提示=", "构词="},
+     "[组词规则]", "提示=", "构词=", "[词组]"},
     {"KeyCode=", "Length=", "InvalidChar=", "Pinyin=", "PinyinLength=",
-     "[Data]", "[Rule]", "Prompt=", "ConstructPhrase="}};
+     "[Data]", "[Rule]", "Prompt=", "ConstructPhrase=", "[Phrase]"}};
 
 constexpr std::string_view UserDictAutoMark = "[Auto]";
 constexpr std::string_view UserDictDeleteMark = "[Delete]";
@@ -69,6 +77,27 @@ inline std::string generateTableEntry(std::string_view key,
     entry += keyValueSeparator;
     entry.append(value.data(), value.size());
     return entry;
+}
+
+void maybeUnescapeValue(std::string &value) {
+    if (value.size() >= 2 && fcitx::stringutils::startsWith(value, '"') &&
+        fcitx::stringutils::endsWith(value, '"')) {
+        if (auto unescape = fcitx::stringutils::unescapeForValue(value)) {
+            value = unescape.value();
+        }
+    }
+}
+
+std::string maybeEscapeValue(std::string_view value) {
+    auto escaped = fcitx::stringutils::escapeForValue(value);
+    if (escaped.size() != value.size()) {
+        if (fcitx::stringutils::startsWith(escaped, "\"") &&
+            fcitx::stringutils::endsWith(escaped, "\"")) {
+            return escaped;
+        }
+        return fcitx::stringutils::concat("\"", escaped, "\"");
+    }
+    return std::string{value};
 }
 
 void updateReverseLookupEntry(DATrie<int32_t> &trie, std::string_view key,
@@ -118,9 +147,23 @@ void saveTrieToText(const DATrie<uint32_t> &trie, std::ostream &out) {
         return std::get<uint32_t>(lhs) < std::get<uint32_t>(rhs);
     });
     for (auto &item : temp) {
-        out << std::get<0>(item) << " " << std::get<1>(item) << std::endl;
+        out << std::get<0>(item) << " " << maybeEscapeValue(std::get<1>(item))
+            << std::endl;
     }
 }
+
+uint32_t maxValue(const DATrie<uint32_t> &trie) {
+    uint32_t max = 0;
+    trie.foreach(
+        [&max](uint32_t value, size_t, DATrie<uint32_t>::position_type) {
+            if (value + 1 > max) {
+                max = value + 1;
+            }
+            return true;
+        });
+    return max;
+}
+
 } // namespace
 
 std::pair<DATrie<uint32_t> *, uint32_t *>
@@ -297,7 +340,9 @@ TableBasedDictionaryPrivate::parseDataLine(std::string_view buf, bool user) {
     }
 
     auto key = std::string_view(buf).substr(0, spacePos);
-    auto value = std::string_view(buf).substr(wordPos);
+    std::string value{std::string_view(buf).substr(wordPos)};
+    maybeUnescapeValue(value);
+
     if (key.empty() || value.empty()) {
         return {};
     }
@@ -316,7 +361,8 @@ TableBasedDictionaryPrivate::parseDataLine(std::string_view buf, bool user) {
         key = key.substr(std::distance(key.begin(), next));
     }
 
-    return std::tuple<std::string, std::string, PhraseFlag>{key, value, flag};
+    return std::tuple<std::string, std::string, PhraseFlag>{
+        key, std::move(value), flag};
 }
 
 void TableBasedDictionaryPrivate::insertDataLine(std::string_view buf,
@@ -422,12 +468,67 @@ bool TableBasedDictionaryPrivate::validateHints(std::vector<std::string> &hints,
         // Don't use hint for table with phrase key, or the requested length
         // longer.
         if (phraseKey_ ||
-            fcitx::utf8::length(hints[index]) < ruleEntry.encodingIndex()) {
+            fcitx::utf8::length(hints[index]) <
+                static_cast<size_t>(std::abs(ruleEntry.index()))) {
             hints[index] = std::string();
         }
     }
 
     return true;
+}
+
+void TableBasedDictionaryPrivate::loadBinary(std::istream &in) {
+    FCITX_Q();
+    throw_if_io_fail(unmarshall(in, pinyinKey_));
+    throw_if_io_fail(unmarshall(in, promptKey_));
+    throw_if_io_fail(unmarshall(in, phraseKey_));
+    throw_if_io_fail(unmarshall(in, codeLength_));
+    uint32_t size = 0;
+
+    throw_if_io_fail(unmarshall(in, size));
+    inputCode_.clear();
+    while (size--) {
+        uint32_t c;
+        throw_if_io_fail(unmarshall(in, c));
+        inputCode_.insert(c);
+    }
+
+    throw_if_io_fail(unmarshall(in, size));
+    ignoreChars_.clear();
+    while (size--) {
+        uint32_t c;
+        throw_if_io_fail(unmarshall(in, c));
+        ignoreChars_.insert(c);
+    }
+
+    throw_if_io_fail(unmarshall(in, size));
+    rules_.clear();
+    while (size--) {
+        rules_.emplace_back(in);
+    }
+    phraseTrie_ = decltype(phraseTrie_)(in);
+    phraseTrieIndex_ = maxValue(phraseTrie_);
+    singleCharTrie_ = decltype(singleCharTrie_)(in);
+    if (q->hasRule()) {
+        singleCharConstTrie_ = decltype(singleCharConstTrie_)(in);
+        singleCharLookupTrie_ = decltype(singleCharLookupTrie_)(in);
+    }
+    if (promptKey_) {
+        promptTrie_ = decltype(promptTrie_)(in);
+    }
+}
+
+void TableBasedDictionaryPrivate::loadUserBinary(std::istream &in,
+                                                 uint32_t version) {
+    userTrie_ = decltype(userTrie_)(in);
+    userTrieIndex_ = maxValue(userTrie_);
+    autoPhraseDict_ = decltype(autoPhraseDict_)(TABLE_AUTOPHRASE_SIZE, in);
+    // Version 2 introduced new deletion trie.
+    if (version >= 2) {
+        deletionTrie_ = decltype(deletionTrie_)(in);
+    } else {
+        deletionTrie_ = decltype(deletionTrie_)();
+    }
 }
 
 TableBasedDictionary::TableBasedDictionary()
@@ -462,7 +563,6 @@ void TableBasedDictionary::loadText(std::istream &in) {
     d->reset();
 
     std::string buf;
-    size_t lineNumber = 0;
 
     auto check_option = [&buf](int index) {
         if (buf.compare(0, std::strlen(strConst[0][index]),
@@ -482,7 +582,6 @@ void TableBasedDictionary::loadText(std::istream &in) {
         if (!std::getline(in, buf)) {
             break;
         }
-        lineNumber++;
 
         // Validate everything first, so it's easier to process.
         if (!fcitx::utf8::validate(buf)) {
@@ -553,12 +652,23 @@ void TableBasedDictionary::loadText(std::istream &in) {
             break;
         }
         case BuildPhase::PhaseData:
+            if (check_option(STR_PHRASE) >= 0) {
+                phase = BuildPhase::PhasePhrase;
+                if (!hasRule()) {
+                    throw std::invalid_argument(
+                        "file has phrase section but no rule");
+                }
+            }
             d->insertDataLine(buf, false);
+            break;
+        case BuildPhase::PhasePhrase:
+            maybeUnescapeValue(buf);
+            insert(buf, PhraseFlag::None);
             break;
         }
     }
 
-    if (phase != BuildPhase::PhaseData) {
+    if (phase != BuildPhase::PhaseData && phase != BuildPhase::PhasePhrase) {
         throw_if_fail(in.bad(), std::ios_base::failure("io failed"));
         throw std::invalid_argument("file format is invalid");
     }
@@ -612,7 +722,7 @@ void TableBasedDictionary::saveText(std::ostream &out) {
                 }
                 std::string_view ref(buf);
                 out << promptString << ref.substr(sep + 1) << " "
-                    << ref.substr(0, sep) << std::endl;
+                    << maybeEscapeValue(ref.substr(0, sep)) << std::endl;
                 return true;
             });
     }
@@ -628,24 +738,12 @@ void TableBasedDictionary::saveText(std::ostream &out) {
                 }
                 std::string_view ref(buf);
                 out << phraseString << ref.substr(sep + 1) << " "
-                    << ref.substr(0, sep) << std::endl;
+                    << maybeEscapeValue(ref.substr(0, sep)) << std::endl;
                 return true;
             });
     }
 
     saveTrieToText(d->phraseTrie_, out);
-}
-
-uint32_t maxValue(const DATrie<uint32_t> &trie) {
-    uint32_t max = 0;
-    trie.foreach(
-        [&max](uint32_t value, size_t, DATrie<uint32_t>::position_type) {
-            if (value + 1 > max) {
-                max = value + 1;
-            }
-            return true;
-        });
-    return max;
 }
 
 void TableBasedDictionary::loadBinary(std::istream &in) {
@@ -657,45 +755,26 @@ void TableBasedDictionary::loadBinary(std::istream &in) {
         throw std::invalid_argument("Invalid table magic.");
     }
     throw_if_io_fail(unmarshall(in, version));
-    if (version != tableBinaryFormatVersion) {
+    switch (version) {
+    case 1:
+        d->loadBinary(in);
+        break;
+    case 2: {
+        boost::iostreams::filtering_istreambuf compressBuf;
+        compressBuf.push(ZSTDDecompressor());
+        compressBuf.push(in);
+        std::istream compressIn(&compressBuf);
+        d->loadBinary(compressIn);
+        // We don't want to read any data, but only trigger the zstd footer
+        // handling, which validates CRC.
+        compressIn.peek();
+        if (compressIn.bad()) {
+            throw std::invalid_argument("Failed to load dict data");
+        }
+        break;
+    }
+    default:
         throw std::invalid_argument("Invalid table version.");
-    }
-    throw_if_io_fail(unmarshall(in, d->pinyinKey_));
-    throw_if_io_fail(unmarshall(in, d->promptKey_));
-    throw_if_io_fail(unmarshall(in, d->phraseKey_));
-    throw_if_io_fail(unmarshall(in, d->codeLength_));
-    uint32_t size = 0;
-
-    throw_if_io_fail(unmarshall(in, size));
-    d->inputCode_.clear();
-    while (size--) {
-        uint32_t c;
-        throw_if_io_fail(unmarshall(in, c));
-        d->inputCode_.insert(c);
-    }
-
-    throw_if_io_fail(unmarshall(in, size));
-    d->ignoreChars_.clear();
-    while (size--) {
-        uint32_t c;
-        throw_if_io_fail(unmarshall(in, c));
-        d->ignoreChars_.insert(c);
-    }
-
-    throw_if_io_fail(unmarshall(in, size));
-    d->rules_.clear();
-    while (size--) {
-        d->rules_.emplace_back(in);
-    }
-    d->phraseTrie_ = decltype(d->phraseTrie_)(in);
-    d->phraseTrieIndex_ = maxValue(d->phraseTrie_);
-    d->singleCharTrie_ = decltype(d->singleCharTrie_)(in);
-    if (hasRule()) {
-        d->singleCharConstTrie_ = decltype(d->singleCharConstTrie_)(in);
-        d->singleCharLookupTrie_ = decltype(d->singleCharLookupTrie_)(in);
-    }
-    if (d->promptKey_) {
-        d->promptTrie_ = decltype(d->promptTrie_)(in);
     }
 }
 
@@ -718,10 +797,15 @@ void TableBasedDictionary::save(std::ostream &out, TableFormat format) {
     }
 }
 
-void TableBasedDictionary::saveBinary(std::ostream &out) {
+void TableBasedDictionary::saveBinary(std::ostream &origOut) {
     FCITX_D();
-    throw_if_io_fail(marshall(out, tableBinaryFormatMagic));
-    throw_if_io_fail(marshall(out, tableBinaryFormatVersion));
+    throw_if_io_fail(marshall(origOut, tableBinaryFormatMagic));
+    throw_if_io_fail(marshall(origOut, tableBinaryFormatVersion));
+
+    boost::iostreams::filtering_streambuf<boost::iostreams::output> compressBuf;
+    compressBuf.push(ZSTDCompressor());
+    compressBuf.push(origOut);
+    std::ostream out(&compressBuf);
     throw_if_io_fail(marshall(out, d->pinyinKey_));
     throw_if_io_fail(marshall(out, d->promptKey_));
     throw_if_io_fail(marshall(out, d->phraseKey_));
@@ -767,18 +851,27 @@ void TableBasedDictionary::loadUser(std::istream &in, TableFormat format) {
             throw std::invalid_argument("Invalid user table magic.");
         }
         throw_if_io_fail(unmarshall(in, version));
-        if (version < 1 || version > userTableBinaryFormatVersion) {
-            throw std::invalid_argument("Invalid user table version.");
+        switch (version) {
+        case 1:
+        case 2:
+            d->loadUserBinary(in, version);
+            break;
+        case userTableBinaryFormatVersion: {
+            boost::iostreams::filtering_istreambuf compressBuf;
+            compressBuf.push(ZSTDDecompressor());
+            compressBuf.push(in);
+            std::istream compressIn(&compressBuf);
+            d->loadUserBinary(compressIn, version);
+            // We don't want to read any data, but only trigger the zstd footer
+            // handling, which validates CRC.
+            compressIn.peek();
+            if (compressIn.bad()) {
+                throw std::invalid_argument("Failed to load dict data");
+            }
+            break;
         }
-        d->userTrie_ = decltype(d->userTrie_)(in);
-        d->userTrieIndex_ = maxValue(d->userTrie_);
-        d->autoPhraseDict_ =
-            decltype(d->autoPhraseDict_)(TABLE_AUTOPHRASE_SIZE, in);
-        // Version 2 introduced new deletion trie.
-        if (version == userTableBinaryFormatVersion) {
-            d->deletionTrie_ = decltype(d->deletionTrie_)(in);
-        } else {
-            d->deletionTrie_ = decltype(d->deletionTrie_)();
+        default:
+            throw std::invalid_argument("Invalid user table version.");
         }
         break;
     case TableFormat::Text: {
@@ -815,6 +908,7 @@ void TableBasedDictionary::loadUser(std::istream &in, TableFormat format) {
                     continue;
                 }
                 try {
+                    maybeUnescapeValue(tokens[1]);
                     int32_t hit = std::stoi(tokens[2]);
                     d->autoPhraseDict_.insert(
                         generateTableEntry(tokens[0], tokens[1]), hit);
@@ -847,16 +941,23 @@ void TableBasedDictionary::saveUser(const char *filename, TableFormat) {
 void TableBasedDictionary::saveUser(std::ostream &out, TableFormat format) {
     FCITX_D();
     switch (format) {
-    case TableFormat::Binary:
+    case TableFormat::Binary: {
         throw_if_io_fail(marshall(out, userTableBinaryFormatMagic));
         throw_if_io_fail(marshall(out, userTableBinaryFormatVersion));
-        d->userTrie_.save(out);
-        throw_if_io_fail(out);
-        d->autoPhraseDict_.save(out);
-        throw_if_io_fail(out);
-        d->deletionTrie_.save(out);
-        throw_if_io_fail(out);
+
+        boost::iostreams::filtering_streambuf<boost::iostreams::output>
+            compressBuf;
+        compressBuf.push(ZSTDCompressor());
+        compressBuf.push(out);
+        std::ostream compressOut(&compressBuf);
+        d->userTrie_.save(compressOut);
+        throw_if_io_fail(compressOut);
+        d->autoPhraseDict_.save(compressOut);
+        throw_if_io_fail(compressOut);
+        d->deletionTrie_.save(compressOut);
+        throw_if_io_fail(compressOut);
         break;
+    }
     case TableFormat::Text: {
         saveTrieToText(d->userTrie_, out);
 
@@ -872,8 +973,8 @@ void TableBasedDictionary::saveUser(std::ostream &out, TableFormat format) {
                     return true;
                 });
             for (auto &t : autoEntries | boost::adaptors::reversed) {
-                out << std::get<0>(t) << " " << std::get<1>(t) << " "
-                    << std::get<2>(t) << std::endl;
+                out << std::get<0>(t) << " " << maybeEscapeValue(std::get<1>(t))
+                    << " " << std::get<2>(t) << std::endl;
             }
         }
         if (!d->deletionTrie_.empty()) {
@@ -1042,6 +1143,7 @@ bool TableBasedDictionary::generateWithHint(
         }
 
         bool success = true;
+        std::set<std::pair<size_t, int>> usedChar;
         for (const auto &ruleEntry : rule.entries()) {
             std::string_view::const_iterator iter;
             // skip rule entry like p00.
@@ -1075,14 +1177,30 @@ bool TableBasedDictionary::generateWithHint(
                 success = false;
                 break;
             }
+
             auto length = fcitx::utf8::lengthValidated(entry);
+            auto codeIndex = ruleEntry.index();
             if (length == fcitx::utf8::INVALID_LENGTH ||
-                length < ruleEntry.encodingIndex()) {
+                length < static_cast<size_t>(std::abs(codeIndex))) {
                 continue;
             }
 
-            auto entryStart = fcitx::utf8::nextNChar(
-                entry.begin(), ruleEntry.encodingIndex() - 1);
+            if (codeIndex > 0) {
+                // code index starts with 1.
+                codeIndex -= 1;
+            } else {
+                codeIndex = static_cast<int>(length) + codeIndex;
+            }
+
+            auto charIndex = std::make_pair(index, codeIndex);
+            // Avoid same code being referenced twice.
+            // This helps for the case like: p11 and p1z point to the same code
+            // character.
+            if (usedChar.count(charIndex)) {
+                continue;
+            }
+            usedChar.insert(charIndex);
+            auto entryStart = fcitx::utf8::nextNChar(entry.begin(), codeIndex);
             auto entryEnd = fcitx::utf8::nextChar(entryStart);
 
             newKey.append(entryStart, entryEnd);
@@ -1206,17 +1324,18 @@ bool TableBasedDictionary::hasMatchingWords(std::string_view code) const {
 }
 
 bool TableBasedDictionary::hasOneMatchingWord(std::string_view code) const {
-    bool hasMatch = false;
+    bool hasOneMatch = false;
     matchWords(
         code, TableMatchMode::Prefix,
-        [&hasMatch](std::string_view, std::string_view, uint32_t, PhraseFlag) {
-            if (hasMatch) {
+        [&hasOneMatch](std::string_view, std::string_view, uint32_t, PhraseFlag) {
+            if (hasOneMatch) {
+                hasOneMatch = false;
                 return false;
             }
-            hasMatch = true;
+            hasOneMatch = true;
             return true;
         });
-    return hasMatch;
+    return hasOneMatch;
 }
 
 PhraseFlag TableBasedDictionary::wordExists(std::string_view code,

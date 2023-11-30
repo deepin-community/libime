@@ -12,6 +12,7 @@
 #include <fcitx-utils/log.h>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unistd.h>
 
@@ -54,6 +55,7 @@ void testWubi() {
         std::string key;
         FCITX_ASSERT(!table.generate("你好", key));
         FCITX_ASSERT(table.generate("统计局", key));
+        FCITX_ASSERT(table.wordExists("xynn", "统计局") == PhraseFlag::Invalid);
         FCITX_ASSERT(key == "xynn");
 
         FCITX_ASSERT(table.insert("wq", "你"));
@@ -150,6 +152,51 @@ void testCangjie() {
     }
 }
 
+void testCangjiePhrase() {
+
+    std::string test = "KeyCode=abcdefghijklmnopqrstuvwxyz\n"
+                       "Length=6\n"
+                       "Prompt=&\n"
+                       "[Rule]\n"
+                       "e2=p11+p1z+p21+p22+p2z\n"
+                       "e3=p11+p1z+p21+p2z+p3z\n"
+                       "a4=p11+p2z+p31+n2z+n1z\n"
+                       "[Data]\n"
+                       "&a 日\n"
+                       "&b 月\n"
+                       "&c 金\n"
+                       "a 日\n"
+                       "a 曰\n"
+                       "aa 昌\n"
+                       "aaa 晶\n"
+                       "abac 暝\n";
+
+    std::stringstream ss(test);
+
+    try {
+        libime::TableBasedDictionary table;
+        table.load(ss, libime::TableFormat::Text);
+        table.save(std::cout, TableFormat::Text);
+        FCITX_ASSERT(table.hasRule());
+        std::string key;
+        FCITX_ASSERT(table.generate("日日", key));
+        FCITX_ASSERT(key == "aa") << key;
+        FCITX_ASSERT(table.generate("日日日日", key));
+        FCITX_ASSERT(key == "aaaa") << key;
+        FCITX_ASSERT(table.generate("昌日", key));
+        FCITX_ASSERT(key == "aaa") << key;
+        FCITX_ASSERT(table.generate("日昌", key));
+        FCITX_ASSERT(key == "aaa") << key;
+        FCITX_ASSERT(table.generate("昌暝", key));
+        FCITX_ASSERT(key == "aaabc") << key;
+        FCITX_ASSERT(table.generate("暝暝", key));
+        FCITX_ASSERT(key == "acabc") << key;
+        FCITX_ASSERT(table.hint("abac") == "日月日金");
+    } catch (std::ios_base::failure &e) {
+        std::cout << e.what() << std::endl;
+    }
+}
+
 void testRule() {
     TableRule rule("e2=p11+p12+p21+p22+p00", 5);
     FCITX_ASSERT(rule.entries().size() == 5);
@@ -169,10 +216,105 @@ void testRule() {
     FCITX_ASSERT(ex);
 }
 
+void testPhraseSection() {
+
+    std::string test = "KeyCode=abcdefghijklmnopqrstuvwxy\n"
+                       "Length=4\n"
+                       "Pinyin=@\n"
+                       "[Rule]\n"
+                       "e2=p11+p12+p21+p22\n"
+                       "e3=p11+p21+p31+p32\n"
+                       "a4=p11+p21+p31+n11\n"
+                       "[Data]\n"
+                       "xycq 统\n"
+                       "yfh 计\n"
+                       "nnkd 局\n"
+                       "[Phrase]\n"
+                       "统计局";
+
+    std::stringstream ss(test);
+
+    try {
+        libime::TableBasedDictionary table;
+        table.load(ss, libime::TableFormat::Text);
+        FCITX_ASSERT(table.hasRule());
+        FCITX_ASSERT(table.hasPinyin());
+        FCITX_ASSERT(table.wordExists("xynn", "统计局") == PhraseFlag::None);
+    } catch (std::ios_base::failure &e) {
+        std::cout << e.what() << std::endl;
+    }
+}
+void testInvalidPhraseSection() {
+
+    std::string test = "KeyCode=abcdefghijklmnopqrstuvwxy\n"
+                       "Length=4\n"
+                       "Pinyin=@\n"
+                       "[Data]\n"
+                       "xycq 统\n"
+                       "yfh 计\n"
+                       "nnkd 局\n"
+                       "[Phrase]\n"
+                       "统计局";
+
+    std::stringstream ss(test);
+    bool ex = false;
+    try {
+        libime::TableBasedDictionary table;
+        table.load(ss, libime::TableFormat::Text);
+    } catch (const std::invalid_argument &) {
+        ex = true;
+    }
+    FCITX_ASSERT(ex);
+}
+
+void testEscape() {
+    std::string test = "KeyCode=abcdefghijklmnopqrstuvwxy\n"
+                       "Length=4\n"
+                       "Pinyin=@\n"
+                       "[Rule]\n"
+                       "e2=p11+p12+p21+p22\n"
+                       "e3=p11+p21+p31+p32\n"
+                       "a4=p11+p21+p31+n11\n"
+                       "[Data]\n"
+                       "xycq 统\n"
+                       "yfh 计\n"
+                       "nnkd 局\n"
+                       "aaaa \"工 \"\n"
+                       "f \"\n"
+                       "[Phrase]\n"
+                       "\"统计局\"";
+
+    std::string expect = "KeyCode=abcdefghijklmnopqrstuvwxy\n"
+                         "Length=4\n"
+                         "Pinyin=@\n"
+                         "[Rule]\n"
+                         "e2=p11+p12+p21+p22\n"
+                         "e3=p11+p21+p31+p32\n"
+                         "a4=p11+p21+p31+n11\n"
+                         "[Data]\n"
+                         "xycq 统\n"
+                         "yfh 计\n"
+                         "nnkd 局\n"
+                         "aaaa \"工 \"\n"
+                         "f \"\\\"\"\n"
+                         "xynn 统计局\n";
+
+    std::stringstream ss(test);
+    libime::TableBasedDictionary table;
+    table.load(ss, libime::TableFormat::Text);
+    std::stringstream out;
+    table.save(out, TableFormat::Text);
+    FCITX_ASSERT(out.str() == expect) << out.str();
+}
+
 int main() {
     testRule();
     testWubi();
     testCangjie();
+    testCangjiePhrase();
+    testPhraseSection();
+    testInvalidPhraseSection();
+    testEscape();
 
     return 0;
 }

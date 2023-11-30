@@ -10,6 +10,7 @@
 #include "libime/pinyin/pinyincontext.h"
 #include "libime/pinyin/pinyindecoder.h"
 #include "libime/pinyin/pinyindictionary.h"
+#include "libime/pinyin/pinyinencoder.h"
 #include "libime/pinyin/pinyinime.h"
 #include "libime/pinyin/shuangpinprofile.h"
 #include "testdir.h"
@@ -27,7 +28,7 @@
 using namespace libime;
 
 int main(int argc, char *argv[]) {
-    auto printTime = [](int t) {
+    auto printTime = [](int64_t t) {
         std::cout << "Time: " << t / 1000000.0 << " ms" << std::endl;
     };
     fcitx::Log::setLogRule("libime=5");
@@ -46,7 +47,8 @@ int main(int argc, char *argv[]) {
         std::fstream fin(argv[2], std::ios::in | std::ios::binary);
         ime.model()->history().load(fin);
     }
-    ime.setFuzzyFlags(PinyinFuzzyFlag::Inner);
+    ime.setFuzzyFlags({PinyinFuzzyFlag::Inner, PinyinFuzzyFlag::CommonTypo,
+                       PinyinFuzzyFlag::AdvancedTypo});
     ime.setScoreFilter(1.0f);
     ime.setShuangpinProfile(
         std::make_shared<ShuangpinProfile>(ShuangpinBuiltinProfile::Xiaohe));
@@ -78,6 +80,8 @@ int main(int argc, char *argv[]) {
             }
         } else if (word == "all") {
             printAll = true;
+        } else if (word == "quit") {
+            break;
         }
         if (c.selected()) {
             std::cout << "COMMIT:   " << c.preedit() << std::endl;
