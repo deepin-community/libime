@@ -20,6 +20,7 @@
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/stringutils.h>
 #include <fcitx-utils/utf8.h>
+#include <regex>
 
 namespace libime {
 
@@ -33,8 +34,9 @@ size_t sentenceCodeLength(const SentenceResult &sentence) {
 
 template <OrderPolicy policy>
 struct TableCandidateCompare {
-    TableCandidateCompare(int noSortInputLength)
-        : noSortInputLength_(noSortInputLength) {}
+    TableCandidateCompare(int noSortInputLength, bool sortByCodeLength)
+        : noSortInputLength_(noSortInputLength),
+          sortByCodeLength_(sortByCodeLength) {}
 
     // Larger index should be put ahead.
     static int64_t index(const SentenceResult &sentence) {
@@ -67,7 +69,7 @@ struct TableCandidateCompare {
                 return lShort > rShort;
             }
             // Always sort result by code length.
-            if (lLength != rLength) {
+            if (sortByCodeLength_ && lLength != rLength) {
                 return lLength < rLength;
             }
 
@@ -94,6 +96,7 @@ struct TableCandidateCompare {
 
 private:
     const int noSortInputLength_;
+    const bool sortByCodeLength_;
 };
 
 struct SelectedCode {
@@ -170,7 +173,17 @@ public:
         if (!canDoAutoSelect()) {
             return false;
         }
-        return candidates_.size() == 1;
+        if (candidates_.size() != 1) {
+            return false;
+        }
+
+        if (candidates_[0].sentence().size() != 1) {
+            return false;
+        }
+        FCITX_Q();
+        return q->code(candidates_[0]) == q->currentCode() &&
+               (!dict_.tableOptions().exactMatch() ||
+                dict_.hasOneMatchingWord(q->currentCode()));
     };
 
     State currentState() {
@@ -256,9 +269,9 @@ public:
 
         // Check by regex.
         return dict_.d_func()->autoSelectRegex_ &&
-               boost::regex_match(graph_.data(),
-                                  *dict_.d_func()->autoSelectRegex_,
-                                  boost::regex_constants::match_default);
+               std::regex_match(graph_.data(),
+                                *dict_.d_func()->autoSelectRegex_,
+                                std::regex_constants::match_default);
     }
 
     bool checkNoMatchAutoSelect() const {
@@ -273,9 +286,9 @@ public:
 
         // Check by regex.
         return dict_.d_func()->noMatchAutoSelectRegex_ &&
-               boost::regex_match(graph_.data(),
-                                  *dict_.d_func()->noMatchAutoSelectRegex_,
-                                  boost::regex_constants::match_default);
+               std::regex_match(graph_.data(),
+                                *dict_.d_func()->noMatchAutoSelectRegex_,
+                                std::regex_constants::match_default);
     }
 
     TableBasedDictionary &dict_;
@@ -560,16 +573,22 @@ void TableContext::update() {
 
         switch (d->dict_.tableOptions().orderPolicy()) {
         case OrderPolicy::No:
-            std::sort(d->candidates_.begin(), d->candidates_.end(),
-                      TableCandidateCompare<OrderPolicy::No>(noSortLength));
+            std::sort(
+                d->candidates_.begin(), d->candidates_.end(),
+                TableCandidateCompare<OrderPolicy::No>(
+                    noSortLength, d->dict_.tableOptions().sortByCodeLength()));
             break;
         case OrderPolicy::Fast:
-            std::sort(d->candidates_.begin(), d->candidates_.end(),
-                      TableCandidateCompare<OrderPolicy::Fast>(noSortLength));
+            std::sort(
+                d->candidates_.begin(), d->candidates_.end(),
+                TableCandidateCompare<OrderPolicy::Fast>(
+                    noSortLength, d->dict_.tableOptions().sortByCodeLength()));
             break;
         case OrderPolicy::Freq:
-            std::sort(d->candidates_.begin(), d->candidates_.end(),
-                      TableCandidateCompare<OrderPolicy::Freq>(noSortLength));
+            std::sort(
+                d->candidates_.begin(), d->candidates_.end(),
+                TableCandidateCompare<OrderPolicy::Freq>(
+                    noSortLength, d->dict_.tableOptions().sortByCodeLength()));
             break;
         }
         if (!d->candidates_.empty() && isPinyin(d->candidates_[0])) {

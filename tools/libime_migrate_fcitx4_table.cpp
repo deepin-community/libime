@@ -24,12 +24,6 @@
 #include <filesystem>
 #endif
 
-#if defined(__linux__) || defined(__GLIBC__)
-#include <endian.h>
-#else
-#include <sys/endian.h>
-#endif
-
 using namespace libime;
 using namespace fcitx;
 
@@ -195,7 +189,7 @@ void loadSource(
 
     uint32_t codeStrLength;
     throw_if_io_fail(unmarshallLE(in, codeStrLength));
-    //先读取码表的信息
+    // 先读取码表的信息
     bool isOldVersion = 1;
     if (!codeStrLength) {
         uint8_t version;

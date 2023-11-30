@@ -6,6 +6,7 @@
 #include "pinyinencoder.h"
 #include "pinyindata.h"
 #include "shuangpinprofile.h"
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <boost/bimap.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
@@ -89,14 +90,23 @@ static const auto finalMap = makeBimap<PinyinFinal, std::string>({
 
 static const int maxPinyinLength = 6;
 
+struct LongestMatchResult {
+    bool valid;
+    std::string_view match;
+    bool isCompletePinyin;
+};
+
 template <typename Iter>
-std::pair<std::string_view, bool> longestMatch(Iter iter, Iter end,
-                                               PinyinFuzzyFlags flags) {
+LongestMatchResult longestMatch(Iter iter, Iter end, PinyinFuzzyFlags flags) {
+    if (*iter == 'i' || *iter == 'u' || *iter == 'v') {
+        return {false, std::string_view(&*iter, std::distance(iter, end)),
+                false};
+    }
     if (std::distance(iter, end) > maxPinyinLength) {
         end = iter + maxPinyinLength;
     }
     auto range = std::string_view(&*iter, std::distance(iter, end));
-    const auto &map = getPinyinMap();
+    const auto &map = getPinyinMapV2();
     for (; !range.empty(); range.remove_suffix(1)) {
         auto iterPair = map.equal_range(range);
         if (iterPair.first != iterPair.second) {
@@ -104,24 +114,23 @@ std::pair<std::string_view, bool> longestMatch(Iter iter, Iter end,
                  boost::make_iterator_range(iterPair.first, iterPair.second)) {
                 if (flags.test(item.flags())) {
                     // do not consider m/n/r as complete pinyin
-                    return std::make_pair(
-                        range, (range != "m" && range != "n" && range != "r"));
+                    return {true, range,
+                            (range != "m" && range != "n" && range != "r")};
                 }
             }
         }
         if (range.size() <= 2) {
             auto iter = initialMap.right.find(std::string{range});
             if (iter != initialMap.right.end()) {
-                return std::make_pair(range, false);
+                return {true, range, false};
             }
         }
     }
 
-    if (range.empty()) {
-        range = std::string_view(&*iter, 1);
-    }
+    assert(range.empty());
+    range = std::string_view(&*iter, 1);
 
-    return std::make_pair(range, false);
+    return {false, range, false};
 }
 
 std::string PinyinSyllable::toString() const {
@@ -135,98 +144,126 @@ SegmentGraph PinyinEncoder::parseUserPinyin(std::string userPinyin,
     auto pinyin = result.data();
     std::transform(pinyin.begin(), pinyin.end(), pinyin.begin(),
                    fcitx::charutils::tolower);
-    auto end = pinyin.end();
-    std::priority_queue<size_t, std::vector<size_t>, std::greater<size_t>> q;
-    q.push(0);
-    while (!q.empty()) {
-        size_t top;
-        do {
-            top = q.top();
-            q.pop();
-        } while (!q.empty() && q.top() == top);
-        if (top >= pinyin.size()) {
-            continue;
-        }
-        auto iter = std::next(pinyin.begin(), top);
-        if (*iter == '\'') {
-            while (*iter == '\'' && iter != pinyin.end()) {
-                iter++;
-            }
-            auto next = std::distance(pinyin.begin(), iter);
-            result.addNext(top, next);
-            if (static_cast<size_t>(next) < pinyin.size()) {
-                q.push(next);
-            }
-            continue;
-        }
-        std::string_view str;
-        bool isCompletePinyin;
-        std::tie(str, isCompletePinyin) = longestMatch(iter, end, flags);
+    const auto end = pinyin.end();
 
-        // it's not complete a pinyin, no need to try
-        if (!isCompletePinyin) {
-            result.addNext(top, top + str.size());
-            q.push(top + str.size());
-        } else {
-            // check fuzzy seg
-            // pinyin may end with aegimnoruv
-            // and may start with abcdefghjklmnopqrstwxyz.
-            // the intersection is aegmnor, while for m, it only 'm', so don't
-            // consider it
-            // also, make sure current pinyin does not end with a separator,
-            // other wise, jin'an may be parsed into ji'n because, nextMatch is
-            // starts with "'".
-            const auto &map = getPinyinMap();
-            std::array<size_t, 2> nextSize;
-            size_t nNextSize = 0;
-            if (str.size() > 1 && top + str.size() < pinyin.size() &&
-                pinyin[top + str.size()] != '\'' &&
-                (str.back() == 'a' || str.back() == 'e' || str.back() == 'g' ||
-                 str.back() == 'n' || str.back() == 'o' || str.back() == 'r') &&
-                map.find(str.substr(0, str.size() - 1)) != map.end()) {
-                // str[0:-1] is also a full pinyin, check next pinyin
-                auto nextMatch = longestMatch(iter + str.size(), end, flags);
-                auto nextMatchAlt =
-                    longestMatch(iter + str.size() - 1, end, flags);
-                auto matchSize = str.size() + nextMatch.first.size();
-                auto matchSizeAlt = str.size() - 1 + nextMatchAlt.first.size();
-                if (std::make_pair(matchSize, nextMatch.second) >=
-                    std::make_pair(matchSizeAlt, nextMatchAlt.second)) {
+    std::vector<PinyinFuzzyFlags> flagsToTry = {flags};
+    // The parsing should be fast enough to do it twice, so we don't lost
+    // anything.
+    if (flags.test(PinyinFuzzyFlag::AdvancedTypo)) {
+        flagsToTry.push_back(flags.unset(PinyinFuzzyFlag::AdvancedTypo));
+    }
+
+    for (const auto fuzzyFlags : flagsToTry) {
+        std::priority_queue<size_t, std::vector<size_t>, std::greater<size_t>>
+            q;
+        q.push(0);
+        while (!q.empty()) {
+            size_t top;
+            do {
+                top = q.top();
+                q.pop();
+            } while (!q.empty() && q.top() == top);
+            if (top >= pinyin.size()) {
+                continue;
+            }
+            auto iter = std::next(pinyin.begin(), top);
+            if (*iter == '\'') {
+                while (*iter == '\'' && iter != pinyin.end()) {
+                    iter++;
+                }
+                auto next = std::distance(pinyin.begin(), iter);
+                result.addNext(top, next);
+                if (static_cast<size_t>(next) < pinyin.size()) {
+                    q.push(next);
+                }
+                continue;
+            }
+            auto [valid, str, isCompletePinyin] =
+                longestMatch(iter, end, fuzzyFlags);
+
+            // it's not complete a pinyin, no need to try
+            if (!valid || !isCompletePinyin) {
+                result.addNext(top, top + str.size());
+                q.push(top + str.size());
+            } else {
+                // check fuzzy seg
+                // pinyin may end with aegimnoruv(h)
+                // and may start with abcdefghjklmnopqrstwxyz.
+                // the intersection is aegmnor(h), while for m, it only 'm', so
+                // don't consider it also, make sure current pinyin does not end
+                // with a separator, other wise, jin'an may be parsed into ji'n
+                // because, nextMatch is starts with "'".
+                const auto &map = getPinyinMapV2();
+                std::array<size_t, 2> nextSize;
+                size_t nNextSize = 0;
+                // Check if we can do fuzzy segement, e.g.
+                // zhuni -> zhu ni
+                if (str.size() > 1 && top + str.size() < pinyin.size() &&
+                    pinyin[top + str.size()] != '\'' &&
+                    (str.back() == 'a' || str.back() == 'e' ||
+                     str.back() == 'g' || str.back() == 'n' ||
+                     str.back() == 'o' || str.back() == 'r' ||
+                     str.back() == 'h') &&
+                    map.find(str.substr(0, str.size() - 1)) != map.end()) {
+                    // str[0:-1] is also a full pinyin, check next pinyin
+                    auto nextMatch =
+                        longestMatch(iter + str.size(), end, fuzzyFlags);
+                    auto nextMatchAlt =
+                        longestMatch(iter + str.size() - 1, end, fuzzyFlags);
+                    auto matchSize = str.size() + nextMatch.match.size();
+                    auto matchSizeAlt =
+                        str.size() - 1 + nextMatchAlt.match.size();
+
+                    // comparator is (validPinyin, wholeMatchSize,
+                    // isCompletePinyin) validPinyin means it's at least some
+                    // pinyin, instead of things startsWith i,u,v. Since
+                    // longestMatch will now treat string startsWith iuv a whole
+                    // segment, we need to compare validity before the length.
+                    // Always prefer longer match and complete pinyin match.
+                    std::tuple<bool, size_t, bool> compare(
+                        nextMatch.valid, matchSize, nextMatch.isCompletePinyin);
+                    std::tuple<bool, size_t, bool> compareAlt(
+                        nextMatchAlt.valid, matchSizeAlt,
+                        nextMatchAlt.isCompletePinyin);
+
+                    if (compare >= compareAlt) {
+                        result.addNext(top, top + str.size());
+                        q.push(top + str.size());
+                        nextSize[nNextSize++] = str.size();
+                    }
+                    if (compare <= compareAlt) {
+                        result.addNext(top, top + str.size() - 1);
+                        q.push(top + str.size() - 1);
+                        nextSize[nNextSize++] = str.size() - 1;
+                    }
+                } else {
                     result.addNext(top, top + str.size());
                     q.push(top + str.size());
                     nextSize[nNextSize++] = str.size();
                 }
-                if (std::make_pair(matchSize, nextMatch.second) <=
-                    std::make_pair(matchSizeAlt, nextMatchAlt.second)) {
-                    result.addNext(top, top + str.size() - 1);
-                    q.push(top + str.size() - 1);
-                    nextSize[nNextSize++] = str.size() - 1;
-                }
-            } else {
-                result.addNext(top, top + str.size());
-                q.push(top + str.size());
-                nextSize[nNextSize++] = str.size();
-            }
 
-            for (size_t i = 0; i < nNextSize; i++) {
-                if ((nextSize[i] >= 4 && flags.test(PinyinFuzzyFlag::Inner)) ||
-                    (nextSize[i] == 3 &&
-                     flags.test(PinyinFuzzyFlag::InnerShort))) {
-                    const auto &innerSegments = getInnerSegment();
-                    auto iter = innerSegments.find(
-                        std::string{str.substr(0, nextSize[i])});
-                    if (iter != innerSegments.end()) {
-                        result.addNext(top, top + iter->second.first.size());
-                        result.addNext(top + iter->second.first.size(),
-                                       top + nextSize[i]);
+                for (size_t i = 0; i < nNextSize; i++) {
+                    if ((nextSize[i] >= 4 &&
+                         fuzzyFlags.test(PinyinFuzzyFlag::Inner)) ||
+                        (nextSize[i] == 3 &&
+                         flags.test(PinyinFuzzyFlag::InnerShort))) {
+                        const auto &innerSegments = getInnerSegment();
+                        auto iter = innerSegments.find(
+                            std::string{str.substr(0, nextSize[i])});
+                        if (iter != innerSegments.end()) {
+                            result.addNext(top,
+                                           top + iter->second.first.size());
+                            result.addNext(top + iter->second.first.size(),
+                                           top + nextSize[i]);
+                        }
+                    } else if (nextSize[i] == 2 &&
+                               flags.test(PinyinFuzzyFlag::InnerShort) &&
+                               str.substr(0, 2) == "ng") {
+                        // Handle ng -> n'g, the condition is so simple so we
+                        // don't make it go through the inner segment lookup.
+                        result.addNext(top, top + 1);
+                        result.addNext(top + 1, top + 2);
                     }
-                } else if (nextSize[i] == 2 &&
-                           flags.test(PinyinFuzzyFlag::InnerShort) &&
-                           str.substr(0, 2) == "ng") {
-                    // Handle ng -> n'g, the condition is so simple so we don't
-                    // make it go through the inner segment lookup.
-                    result.addNext(top, top + 1);
-                    result.addNext(top + 1, top + 2);
                 }
             }
         }
@@ -315,18 +352,41 @@ SegmentGraph PinyinEncoder::parseUserShuangpin(std::string userPinyin,
 }
 
 std::vector<char> PinyinEncoder::encodeFullPinyin(std::string_view pinyin) {
+    return encodeFullPinyinWithFlags(pinyin, PinyinFuzzyFlag::None);
+}
+
+std::vector<char>
+PinyinEncoder::encodeFullPinyinWithFlags(std::string_view pinyin,
+                                         PinyinFuzzyFlags flags) {
     std::vector<std::string> pinyins;
     boost::split(pinyins, pinyin, boost::is_any_of("'"));
     std::vector<char> result;
     result.resize(pinyins.size() * 2);
     int idx = 0;
     for (const auto &singlePinyin : pinyins) {
-        const auto &map = getPinyinMap();
-        auto iter = map.find(singlePinyin);
-        if (iter == map.end() || iter->flags() != PinyinFuzzyFlag::None) {
+        const auto &map = getPinyinMapV2();
+        auto [begin, end] = map.equal_range(singlePinyin);
+        if (begin == end) {
             throw std::invalid_argument("invalid full pinyin: " +
                                         std::string{pinyin});
         }
+
+        auto pred = [&flags](const PinyinEntry &entry) {
+            return flags.test(entry.flags());
+        };
+        begin = std::find_if(begin, end, pred);
+        if (begin == end) {
+            throw std::invalid_argument("invalid full pinyin: " +
+                                        std::string{pinyin});
+        }
+
+        auto iter = begin;
+        begin = std::next(begin);
+        if (!std::none_of(begin, end, pred)) {
+            throw std::invalid_argument("invalid full pinyin: " +
+                                        std::string{pinyin});
+        }
+
         result[idx++] = static_cast<char>(iter->initial());
         result[idx++] = static_cast<char>(iter->final());
     }
@@ -476,13 +536,13 @@ std::string PinyinEncoder::initialFinalToPinyinString(PinyinInitial initial,
 static void getFuzzy(
     std::vector<std::pair<PinyinInitial,
                           std::vector<std::pair<PinyinFinal, bool>>>> &syls,
-    PinyinSyllable syl, PinyinFuzzyFlags flags) {
+    PinyinSyllable syl, PinyinFuzzyFlags flags, bool isSp) {
     // ng/gn is already handled by table
     boost::container::static_vector<PinyinInitial, 2> initials{syl.initial()};
     boost::container::static_vector<PinyinFinal, 10> finals{syl.final()};
 
-    // for {s,z,c} we also want them to match {sh,zh,ch}
-    if (syl.final() == PinyinFinal::Invalid) {
+    // for full pinyin {s,z,c} we also want them to match {sh,zh,ch}
+    if (syl.final() == PinyinFinal::Invalid && !isSp) {
         if (syl.initial() == PinyinInitial::C) {
             flags |= PinyinFuzzyFlag::C_CH;
         }
@@ -599,7 +659,7 @@ PinyinEncoder::stringToSyllables(std::string_view pinyinView,
     std::string pinyin(pinyinView);
     std::transform(pinyin.begin(), pinyin.end(), pinyin.begin(),
                    fcitx::charutils::tolower);
-    const auto &map = getPinyinMap();
+    const auto &map = getPinyinMapV2();
     // we only want {M,N,R}/Invalid instead of {M,N,R}/Zero, so we could get
     // match for everything.
     if (pinyin != "m" && pinyin != "n" && pinyin != "r") {
@@ -607,14 +667,16 @@ PinyinEncoder::stringToSyllables(std::string_view pinyinView,
         for (const auto &item :
              boost::make_iterator_range(iterPair.first, iterPair.second)) {
             if (flags.test(item.flags())) {
-                getFuzzy(result, {item.initial(), item.final()}, flags);
+                getFuzzy(result, {item.initial(), item.final()}, flags,
+                         /*isSp=*/false);
             }
         }
     }
 
     auto iter = initialMap.right.find(std::string{pinyin});
     if (initialMap.right.end() != iter) {
-        getFuzzy(result, {iter->second, PinyinFinal::Invalid}, flags);
+        getFuzzy(result, {iter->second, PinyinFinal::Invalid}, flags,
+                 /*isSp=*/false);
     }
 
     if (result.empty()) {
@@ -669,7 +731,8 @@ PinyinEncoder::shuangpinToSyllables(std::string_view pinyinView,
     if (iter != table.end()) {
         for (const auto &p : iter->second) {
             if (flags.test(p.second)) {
-                getFuzzy(result, {p.first.initial(), p.first.final()}, flags);
+                getFuzzy(result, {p.first.initial(), p.first.final()}, flags,
+                         /*isSp=*/true);
             }
         }
     }

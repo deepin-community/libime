@@ -5,7 +5,11 @@
  */
 
 #include "pinyindata.h"
+#include "libime/pinyin/pinyinencoder.h"
+#include <boost/algorithm/string/predicate.hpp>
+#include <fcitx-utils/stringutils.h>
 #include <unordered_set>
+#include <utility>
 
 namespace libime {
 
@@ -100,16 +104,22 @@ getInnerSegment() {
             {"kuan", {"ku", "an"}},     {"kuai", {"ku", "ai"}},
             {"nuan", {"nu", "an"}},     {"piao", {"pi", "ao"}},
             {"pian", {"pi", "an"}},     {"quan", {"qu", "an"}},
-            {"juan", {"ju", "an"}},     {"qiao", {"qi", "ao"}},
+            {"quang", {"qu", "ang"}},   {"qvan", {"qv", "an"}},
+            {"qvang", {"qv", "ang"}},   {"juan", {"ju", "an"}},
+            {"juang", {"ju", "ang"}},   {"jvan", {"jv", "an"}},
+            {"jvang", {"jv", "ang"}},   {"qiao", {"qi", "ao"}},
             {"qiang", {"qi", "ang"}},   {"qian", {"qi", "an"}},
-            {"yuan", {"yu", "an"}},     {"zhuang", {"zhu", "ang"}},
-            {"zhuan", {"zhu", "an"}},   {"zhuai", {"zhu", "ai"}},
-            {"niao", {"ni", "ao"}},     {"niang", {"ni", "ang"}},
-            {"nian", {"ni", "an"}},     {"liao", {"li", "ao"}},
-            {"liang", {"li", "ang"}},   {"lian", {"li", "an"}},
-            {"zuan", {"zu", "an"}},     {"tuan", {"tu", "an"}},
-            {"tiao", {"ti", "ao"}},     {"tian", {"ti", "an"}},
-            {"xuan", {"xu", "an"}},     {"suan", {"su", "an"}},
+            {"yuang", {"yu", "ang"}},   {"yvang", {"yv", "ang"}},
+            {"yuan", {"yu", "an"}},     {"yvan", {"yv", "an"}},
+            {"zhuang", {"zhu", "ang"}}, {"zhuan", {"zhu", "an"}},
+            {"zhuai", {"zhu", "ai"}},   {"niao", {"ni", "ao"}},
+            {"niang", {"ni", "ang"}},   {"nian", {"ni", "an"}},
+            {"liao", {"li", "ao"}},     {"liang", {"li", "ang"}},
+            {"lian", {"li", "an"}},     {"zuan", {"zu", "an"}},
+            {"tuan", {"tu", "an"}},     {"tiao", {"ti", "ao"}},
+            {"tian", {"ti", "an"}},     {"xuang", {"xu", "ang"}},
+            {"xvang", {"xv", "ang"}},   {"xuan", {"xu", "an"}},
+            {"xvan", {"xv", "an"}},     {"suan", {"su", "an"}},
             {"biao", {"bi", "ao"}},     {"bian", {"bi", "an"}},
             {"shuang", {"shu", "ang"}}, {"shuan", {"shu", "an"}},
             {"shuai", {"shu", "ai"}},   {"ruan", {"ru", "an"}},
@@ -123,6 +133,15 @@ getInnerSegment() {
         };
 
     return innerSegment;
+}
+
+inline bool operator==(const PinyinEntry &a, const PinyinEntry &b) {
+    return a.pinyin() == b.pinyin() && a.initial() == b.initial() &&
+           a.final() == b.final() && a.flags() == b.flags();
+}
+
+inline bool operator!=(const PinyinEntry &a, const PinyinEntry &b) {
+    return !(a == b);
 }
 
 const PinyinMap &getPinyinMap() {
@@ -148,6 +167,8 @@ const PinyinMap &getPinyinMap() {
         {"zou", PinyinInitial::Z, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"zogn", PinyinInitial::Z, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
+        {"zon", PinyinInitial::Z, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
         {"zong", PinyinInitial::Z, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"zi", PinyinInitial::Z, PinyinFinal::I, PinyinFuzzyFlag::None},
         {"zhuo", PinyinInitial::ZH, PinyinFinal::UO, PinyinFuzzyFlag::None},
@@ -162,6 +183,8 @@ const PinyinMap &getPinyinMap() {
         {"zhu", PinyinInitial::ZH, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"zhou", PinyinInitial::ZH, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"zhogn", PinyinInitial::ZH, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
+        {"zhon", PinyinInitial::ZH, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
         {"zhong", PinyinInitial::ZH, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"zhi", PinyinInitial::ZH, PinyinFinal::I, PinyinFuzzyFlag::None},
@@ -200,11 +223,23 @@ const PinyinMap &getPinyinMap() {
          {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
         {"yuang", PinyinInitial::Y, PinyinFinal::UAN,
          PinyinFuzzyFlag::UAN_UANG},
+        {"yvagn",
+         PinyinInitial::Y,
+         PinyinFinal::UAN,
+         {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
+        {"yvang",
+         PinyinInitial::Y,
+         PinyinFinal::UAN,
+         {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
         {"yuan", PinyinInitial::Y, PinyinFinal::UAN, PinyinFuzzyFlag::None},
+        {"yvan", PinyinInitial::Y, PinyinFinal::UAN,
+         PinyinFuzzyFlag::CommonTypo},
         {"yu", PinyinInitial::Y, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"yv", PinyinInitial::Y, PinyinFinal::U, PinyinFuzzyFlag::CommonTypo},
         {"you", PinyinInitial::Y, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"yogn", PinyinInitial::Y, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
+        {"yon", PinyinInitial::Y, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
         {"yong", PinyinInitial::Y, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"yo", PinyinInitial::Y, PinyinFinal::O, PinyinFuzzyFlag::None},
@@ -229,7 +264,17 @@ const PinyinMap &getPinyinMap() {
          {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
         {"xuang", PinyinInitial::X, PinyinFinal::UAN,
          PinyinFuzzyFlag::UAN_UANG},
+        {"xvagn",
+         PinyinInitial::X,
+         PinyinFinal::UAN,
+         {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
+        {"xvang",
+         PinyinInitial::X,
+         PinyinFinal::UAN,
+         {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
         {"xuan", PinyinInitial::X, PinyinFinal::UAN, PinyinFuzzyFlag::None},
+        {"xvan", PinyinInitial::X, PinyinFinal::UAN,
+         PinyinFuzzyFlag::CommonTypo},
         {"xu", PinyinInitial::X, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"xv", PinyinInitial::X, PinyinFinal::U, PinyinFuzzyFlag::CommonTypo},
         {"xou", PinyinInitial::X, PinyinFinal::U, PinyinFuzzyFlag::U_OU},
@@ -277,6 +322,8 @@ const PinyinMap &getPinyinMap() {
         {"tu", PinyinInitial::T, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"tou", PinyinInitial::T, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"togn", PinyinInitial::T, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
+        {"ton", PinyinInitial::T, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
         {"tong", PinyinInitial::T, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"tign", PinyinInitial::T, PinyinFinal::ING,
@@ -326,6 +373,8 @@ const PinyinMap &getPinyinMap() {
         {"su", PinyinInitial::S, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"sou", PinyinInitial::S, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"sogn", PinyinInitial::S, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
+        {"son", PinyinInitial::S, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
         {"song", PinyinInitial::S, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"si", PinyinInitial::S, PinyinFinal::I, PinyinFuzzyFlag::None},
@@ -382,6 +431,8 @@ const PinyinMap &getPinyinMap() {
         {"rou", PinyinInitial::R, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"rogn", PinyinInitial::R, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
+        {"ron", PinyinInitial::R, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
         {"rong", PinyinInitial::R, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"ri", PinyinInitial::R, PinyinFinal::I, PinyinFuzzyFlag::None},
         {"regn", PinyinInitial::R, PinyinFinal::ENG,
@@ -403,7 +454,17 @@ const PinyinMap &getPinyinMap() {
          {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
         {"quang", PinyinInitial::Q, PinyinFinal::UAN,
          PinyinFuzzyFlag::UAN_UANG},
+        {"qvagn",
+         PinyinInitial::Q,
+         PinyinFinal::UAN,
+         {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
+        {"qvang",
+         PinyinInitial::Q,
+         PinyinFinal::UAN,
+         {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
         {"quan", PinyinInitial::Q, PinyinFinal::UAN, PinyinFuzzyFlag::None},
+        {"qvan", PinyinInitial::Q, PinyinFinal::UAN,
+         PinyinFuzzyFlag::CommonTypo},
         {"qu", PinyinInitial::Q, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"qv", PinyinInitial::Q, PinyinFinal::U, PinyinFuzzyFlag::CommonTypo},
         {"qiu", PinyinInitial::Q, PinyinFinal::IU, PinyinFuzzyFlag::None},
@@ -470,6 +531,8 @@ const PinyinMap &getPinyinMap() {
         {"nu", PinyinInitial::N, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"nou", PinyinInitial::N, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"nogn", PinyinInitial::N, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
+        {"non", PinyinInitial::N, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
         {"nong", PinyinInitial::N, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"niu", PinyinInitial::N, PinyinFinal::IU, PinyinFuzzyFlag::None},
@@ -548,6 +611,8 @@ const PinyinMap &getPinyinMap() {
         {"lou", PinyinInitial::L, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"logn", PinyinInitial::L, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
+        {"lon", PinyinInitial::L, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
         {"long", PinyinInitial::L, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"lo", PinyinInitial::L, PinyinFinal::O, PinyinFuzzyFlag::None},
         {"liu", PinyinInitial::L, PinyinFinal::IU, PinyinFuzzyFlag::None},
@@ -589,6 +654,8 @@ const PinyinMap &getPinyinMap() {
         {"kou", PinyinInitial::K, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"kogn", PinyinInitial::K, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
+        {"kon", PinyinInitial::K, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
         {"kong", PinyinInitial::K, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"kegn", PinyinInitial::K, PinyinFinal::ENG,
          PinyinFuzzyFlag::CommonTypo},
@@ -612,7 +679,17 @@ const PinyinMap &getPinyinMap() {
          {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
         {"juang", PinyinInitial::J, PinyinFinal::UAN,
          PinyinFuzzyFlag::UAN_UANG},
+        {"jvagn",
+         PinyinInitial::J,
+         PinyinFinal::UAN,
+         {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
+        {"jvang",
+         PinyinInitial::J,
+         PinyinFinal::UAN,
+         {PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::CommonTypo}},
         {"juan", PinyinInitial::J, PinyinFinal::UAN, PinyinFuzzyFlag::None},
+        {"jvan", PinyinInitial::J, PinyinFinal::UAN,
+         PinyinFuzzyFlag::CommonTypo},
         {"ju", PinyinInitial::J, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"jv", PinyinInitial::J, PinyinFinal::U, PinyinFuzzyFlag::CommonTypo},
         {"jiu", PinyinInitial::J, PinyinFinal::IU, PinyinFuzzyFlag::None},
@@ -646,6 +723,8 @@ const PinyinMap &getPinyinMap() {
         {"hou", PinyinInitial::H, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"hogn", PinyinInitial::H, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
+        {"hon", PinyinInitial::H, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
         {"hong", PinyinInitial::H, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"hegn", PinyinInitial::H, PinyinFinal::ENG,
          PinyinFuzzyFlag::CommonTypo},
@@ -672,6 +751,8 @@ const PinyinMap &getPinyinMap() {
         {"gu", PinyinInitial::G, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"gou", PinyinInitial::G, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"gogn", PinyinInitial::G, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
+        {"gon", PinyinInitial::G, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
         {"gong", PinyinInitial::G, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"gegn", PinyinInitial::G, PinyinFinal::ENG,
@@ -723,6 +804,8 @@ const PinyinMap &getPinyinMap() {
         {"dou", PinyinInitial::D, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"dogn", PinyinInitial::D, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
+        {"don", PinyinInitial::D, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
         {"dong", PinyinInitial::D, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"diu", PinyinInitial::D, PinyinFinal::IU, PinyinFuzzyFlag::None},
         {"dign", PinyinInitial::D, PinyinFinal::ING,
@@ -773,6 +856,8 @@ const PinyinMap &getPinyinMap() {
         {"cou", PinyinInitial::C, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"cogn", PinyinInitial::C, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
+        {"con", PinyinInitial::C, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
         {"cong", PinyinInitial::C, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"ci", PinyinInitial::C, PinyinFinal::I, PinyinFuzzyFlag::None},
         {"chuo", PinyinInitial::CH, PinyinFinal::UO, PinyinFuzzyFlag::None},
@@ -787,6 +872,8 @@ const PinyinMap &getPinyinMap() {
         {"chu", PinyinInitial::CH, PinyinFinal::U, PinyinFuzzyFlag::None},
         {"chou", PinyinInitial::CH, PinyinFinal::OU, PinyinFuzzyFlag::None},
         {"chogn", PinyinInitial::CH, PinyinFinal::ONG,
+         PinyinFuzzyFlag::CommonTypo},
+        {"chon", PinyinInitial::CH, PinyinFinal::ONG,
          PinyinFuzzyFlag::CommonTypo},
         {"chong", PinyinInitial::CH, PinyinFinal::ONG, PinyinFuzzyFlag::None},
         {"chi", PinyinInitial::CH, PinyinFinal::I, PinyinFuzzyFlag::None},
@@ -851,4 +938,322 @@ const PinyinMap &getPinyinMap() {
     };
     return pinyinMap;
 }
+
+std::optional<PinyinEntry> applyFuzzy(const PinyinEntry &entry,
+                                      PinyinFuzzyFlag fz, int pass) {
+    if (entry.pinyin() == "m" || entry.pinyin() == "n" ||
+        entry.pinyin() == "r" || entry.pinyin() == "ng" ||
+        entry.pinyin() == "ou") {
+        return std::nullopt;
+    }
+    auto result = entry.pinyin();
+    switch (fz) {
+    case PinyinFuzzyFlag::CommonTypo: {
+        if (pass == 0) {
+            // Allow non standard usage like jv jve jvan jvuang
+            if (result[0] == 'j' || result[0] == 'q' || result[0] == 'x' ||
+                result[0] == 'y') {
+                if (boost::algorithm::ends_with(result, "u") &&
+                    !boost::algorithm::ends_with(result, "iu") &&
+                    !boost::algorithm::ends_with(result, "ou")) {
+                    result.back() = 'v';
+                }
+
+                if (boost::algorithm::ends_with(result, "ue")) {
+                    result[result.size() - 2] = 'v';
+                }
+                if (boost::algorithm::ends_with(result, "uan")) {
+                    result[result.size() - 3] = 'v';
+                }
+                if (boost::algorithm::ends_with(result, "uang")) {
+                    result[result.size() - 4] = 'v';
+                }
+            }
+        } else if (pass == 1) {
+            // Allow lon -> long
+            if (boost::algorithm::ends_with(result, "ong")) {
+                result.pop_back();
+            }
+        } else if (pass == 2) {
+            // Allow ying -> yign
+            if (boost::algorithm::ends_with(result, "ng")) {
+                result[result.size() - 2] = 'g';
+                result[result.size() - 1] = 'n';
+            } else if (boost::algorithm::ends_with(result, "ue")) {
+                // Allow fuzzy for uv, that does not cause ambiguity.
+                result[result.size() - 2] = 'e';
+                result[result.size() - 1] = 'u';
+            } else if (boost::algorithm::ends_with(result, "ve")) {
+                result[result.size() - 2] = 'e';
+                result[result.size() - 1] = 'v';
+            } else if (boost::algorithm::ends_with(result, "ua")) {
+                result[result.size() - 2] = 'a';
+                result[result.size() - 1] = 'u';
+            } else if (boost::algorithm::ends_with(result, "uai")) {
+                result[result.size() - 3] = 'a';
+                result[result.size() - 2] = 'u';
+            } else if (boost::algorithm::ends_with(result, "uan")) {
+                result[result.size() - 3] = 'a';
+                result[result.size() - 2] = 'u';
+            } else if (boost::algorithm::ends_with(result, "van")) {
+                result[result.size() - 3] = 'a';
+                result[result.size() - 2] = 'v';
+            }
+        } else if (pass == 3) {
+            // this conflicts with "ng" rule, so need a separate pass.
+            if (boost::algorithm::ends_with(result, "uang")) {
+                result[result.size() - 4] = 'a';
+                result[result.size() - 3] = 'u';
+            } else if (boost::algorithm::ends_with(result, "vang")) {
+                result[result.size() - 4] = 'a';
+                result[result.size() - 3] = 'v';
+            }
+        }
+        break;
+    case PinyinFuzzyFlag::AdvancedTypo:
+        if (pass == 0) {
+            // Allow reversed zhe -> hze
+            if (boost::algorithm::starts_with(result, "zh") ||
+                boost::algorithm::starts_with(result, "sh") ||
+                boost::algorithm::starts_with(result, "ch")) {
+                std::swap(result[0], result[1]);
+            } else if (boost::algorithm::ends_with(result, "un") &&
+                       !boost::algorithm::ends_with(result, "aun")) {
+                result[result.size() - 2] = 'n';
+                result[result.size() - 1] = 'u';
+            }
+        } else if (pass == 1) {
+            if (entry.flags().test(PinyinFuzzyFlag::AdvancedTypo)) {
+                break;
+            }
+            for (const auto two : {"ai", "ia", "ei", "ie", "ao", "uo", "ou",
+                                   "iu", "an", "en", "in"}) {
+                if (boost::algorithm::ends_with(result, two)) {
+                    std::swap(result[result.size() - 2],
+                              result[result.size() - 1]);
+                }
+            }
+        } else if (pass == 2) {
+            if (entry.flags().test(PinyinFuzzyFlag::AdvancedTypo)) {
+                break;
+            }
+            for (const auto three :
+                 {"ang", "eng", "ing", "ong", "iao", "ian"}) {
+                if (boost::algorithm::ends_with(result, three)) {
+                    std::swap(result[result.size() - 3],
+                              result[result.size() - 2]);
+                }
+            }
+        } else if (pass == 3) {
+            if (entry.flags().test(PinyinFuzzyFlag::AdvancedTypo)) {
+                break;
+            }
+            for (const auto four : {"iang", "iong"}) {
+                if (boost::algorithm::ends_with(result, four)) {
+                    std::swap(result[result.size() - 4],
+                              result[result.size() - 3]);
+                }
+            }
+        } else if (pass == 4) {
+            if (entry.flags().test(PinyinFuzzyFlag::AdvancedTypo)) {
+                break;
+            }
+            // zhe -> zeh.
+            if (result.size() == 3 && result[1] == 'h' &&
+                entry.flags() == PinyinFuzzyFlag::None) {
+                std::swap(result[result.size() - 2], result[result.size() - 1]);
+            }
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::VE_UE: {
+        if (boost::algorithm::ends_with(result, "ve")) {
+            result[result.size() - 2] = 'u';
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::IAN_IANG: {
+        if (boost::algorithm::ends_with(result, "ian")) {
+            result.push_back('g');
+        } else if (boost::algorithm::ends_with(result, "iang")) {
+            result.pop_back();
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::UAN_UANG: {
+        if (entry.flags() != PinyinFuzzyFlag::None) {
+            break;
+        }
+        if (boost::algorithm::ends_with(result, "uan")) {
+            result.push_back('g');
+        } else if (boost::algorithm::ends_with(result, "uang")) {
+            result.pop_back();
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::AN_ANG: {
+        if (boost::algorithm::ends_with(result, "uan") ||
+            boost::algorithm::ends_with(result, "uang")) {
+            break;
+        }
+        if (boost::algorithm::ends_with(result, "ian") ||
+            boost::algorithm::ends_with(result, "iang")) {
+            break;
+        }
+        if (boost::algorithm::ends_with(result, "an")) {
+            result.push_back('g');
+        } else if (boost::algorithm::ends_with(result, "ang")) {
+            result.pop_back();
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::EN_ENG: {
+        if (boost::algorithm::ends_with(result, "en")) {
+            result.push_back('g');
+        } else if (boost::algorithm::ends_with(result, "eng")) {
+            result.pop_back();
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::IN_ING: {
+        if (boost::algorithm::ends_with(result, "in")) {
+            result.push_back('g');
+        } else if (boost::algorithm::ends_with(result, "ing")) {
+            result.pop_back();
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::U_OU: {
+        if (boost::algorithm::ends_with(result, "ou")) {
+            result.pop_back();
+            result.back() = 'u';
+        } else if (boost::algorithm::ends_with(result, "u") &&
+                   !boost::algorithm::ends_with(result, "iu")) {
+            result.back() = 'o';
+            result.push_back('u');
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::C_CH: {
+        if (entry.flags() != PinyinFuzzyFlag::None) {
+            break;
+        }
+        if (boost::algorithm::starts_with(result, "ch")) {
+            result.erase(std::next(result.begin()));
+        } else if (boost::algorithm::starts_with(result, "c")) {
+            result.insert(std::next(result.begin()), 'h');
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::S_SH: {
+        if (entry.flags() != PinyinFuzzyFlag::None) {
+            break;
+        }
+        if (boost::algorithm::starts_with(result, "sh")) {
+            result.erase(std::next(result.begin()));
+        } else if (boost::algorithm::starts_with(result, "s")) {
+            result.insert(std::next(result.begin()), 'h');
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::Z_ZH: {
+        if (entry.flags() != PinyinFuzzyFlag::None) {
+            break;
+        }
+        if (boost::algorithm::starts_with(result, "zh")) {
+            result.erase(std::next(result.begin()));
+        } else if (boost::algorithm::starts_with(result, "z")) {
+            result.insert(std::next(result.begin()), 'h');
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::F_H: {
+        if (boost::algorithm::starts_with(result, "f")) {
+            result.front() = 'h';
+        } else if (boost::algorithm::starts_with(result, "h")) {
+            result.front() = 'f';
+        }
+        break;
+    }
+
+    case PinyinFuzzyFlag::L_N: {
+        if (boost::algorithm::starts_with(result, "l")) {
+            result.front() = 'n';
+        } else if (boost::algorithm::starts_with(result, "n")) {
+            result.front() = 'l';
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    if (result == entry.pinyin()) {
+        return std::nullopt;
+    }
+    return PinyinEntry(result.data(), entry.initial(), entry.final(),
+                       entry.flags() | fz);
+}
+
+void applyFuzzy(PinyinMap &map, PinyinFuzzyFlag fz, int pass = 0) {
+    std::vector<PinyinEntry> newEntries;
+    for (auto &entry : map) {
+        if (auto newEntry = applyFuzzy(entry, fz, pass)) {
+            newEntries.push_back(*newEntry);
+        }
+    }
+
+    for (const auto &newEntry : newEntries) {
+        if (auto iter = map.find(newEntry.pinyin()); iter != map.end()) {
+            if (iter->flags() == PinyinFuzzyFlag::None) {
+                continue;
+            }
+        }
+        FCITX_ASSERT(map.insert(newEntry).second);
+    }
+}
+
+const PinyinMap &getPinyinMapV2() {
+    static const PinyinMap map = []() {
+        const PinyinMap &orig = getPinyinMap();
+
+        PinyinMap filtered;
+        for (const auto &entry : orig) {
+            if (entry.flags() == PinyinFuzzyFlag::None) {
+                filtered.insert(entry);
+            }
+        }
+
+        for (auto fz : {PinyinFuzzyFlag::U_OU, PinyinFuzzyFlag::IN_ING,
+                        PinyinFuzzyFlag::EN_ENG, PinyinFuzzyFlag::AN_ANG,
+                        PinyinFuzzyFlag::UAN_UANG, PinyinFuzzyFlag::IAN_IANG,
+                        PinyinFuzzyFlag::VE_UE, PinyinFuzzyFlag::F_H,
+                        PinyinFuzzyFlag::L_N, PinyinFuzzyFlag::Z_ZH,
+                        PinyinFuzzyFlag::S_SH, PinyinFuzzyFlag::C_CH}) {
+            applyFuzzy(filtered, fz);
+        }
+        applyFuzzy(filtered, PinyinFuzzyFlag::CommonTypo, 0);
+        applyFuzzy(filtered, PinyinFuzzyFlag::CommonTypo, 1);
+        applyFuzzy(filtered, PinyinFuzzyFlag::CommonTypo, 2);
+        applyFuzzy(filtered, PinyinFuzzyFlag::CommonTypo, 3);
+        applyFuzzy(filtered, PinyinFuzzyFlag::AdvancedTypo, 0);
+        applyFuzzy(filtered, PinyinFuzzyFlag::AdvancedTypo, 1);
+        applyFuzzy(filtered, PinyinFuzzyFlag::AdvancedTypo, 2);
+        applyFuzzy(filtered, PinyinFuzzyFlag::AdvancedTypo, 3);
+        applyFuzzy(filtered, PinyinFuzzyFlag::AdvancedTypo, 4);
+        return filtered;
+    }();
+    return map;
+}
+
 } // namespace libime
