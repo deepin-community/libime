@@ -5,36 +5,35 @@
  */
 
 #include "pinyindictionary.h"
+#include "constants.h"
 #include "libime/core/datrie.h"
 #include "libime/core/lattice.h"
 #include "libime/core/lrucache.h"
+#include "libime/core/triedictionary.h"
 #include "libime/core/utils.h"
 #include "libime/core/zstdfilter.h"
 #include "pinyindecoder_p.h"
 #include "pinyinencoder.h"
 #include "pinyinmatchstate_p.h"
 #include <boost/algorithm/string.hpp>
-#include <boost/iostreams/filtering_streambuf.hpp>
-#include <boost/ptr_container/ptr_vector.hpp>
-#include <boost/unordered_map.hpp>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <optional>
 #include <queue>
 #include <string>
 #include <string_view>
-#include <type_traits>
 
 namespace libime {
 
 namespace {
-const float fuzzyCost = std::log10(0.5f);
+const float fuzzyCost = std::log10(0.5F);
 const size_t minimumLongWordLength = 3;
-const float invalidPinyinCost = -100.0f;
+const float invalidPinyinCost = -100.0F;
 const char pinyinHanziSep = '!';
 
-static constexpr uint32_t pinyinBinaryFormatMagic = 0x000fc613;
-static constexpr uint32_t pinyinBinaryFormatVersion = 0x2;
+constexpr uint32_t pinyinBinaryFormatMagic = 0x000fc613;
+constexpr uint32_t pinyinBinaryFormatVersion = 0x2;
 
 struct PinyinSegmentGraphPathHasher {
     PinyinSegmentGraphPathHasher(const SegmentGraph &graph) : graph_(graph) {}
@@ -141,7 +140,8 @@ struct SegmentGraphNodeGreater {
 const SegmentGraphNode *prevIsSeparator(const SegmentGraph &graph,
                                         const SegmentGraphNode &node) {
     if (node.prevSize() == 1) {
-        const auto &prev = node.prevs().front();
+        const auto range = node.prevs();
+        const auto &prev = range.front();
         auto pinyin = graph.segment(prev, node);
         if (boost::starts_with(pinyin, "\'")) {
             return &prev;
@@ -189,6 +189,78 @@ inline void searchOneStep(
     nodes.splice(nodes.end(), std::move(extraNodes));
 }
 
+size_t fuzzyFactor(PinyinFuzzyFlags flags) {
+    size_t factor = 0;
+    if (flags.test(PinyinFuzzyFlag::Correction)) {
+        flags = flags.unset(PinyinFuzzyFlag::Correction);
+        factor += PINYIN_CORRECTION_FUZZY_FACTOR;
+    }
+    if (flags != 0) {
+        factor += 1;
+    }
+    return factor;
+}
+
+PinyinDictionary::TrieType loadTextImpl(std::istream &in) {
+    PinyinDictionary::TrieType trie;
+
+    std::string buf;
+    auto isSpaceCheck = boost::is_any_of(" \n\t\r\v\f");
+    while (!in.eof()) {
+        if (!std::getline(in, buf)) {
+            break;
+        }
+
+        boost::trim_if(buf, isSpaceCheck);
+        std::vector<std::string> tokens;
+        boost::split(tokens, buf, isSpaceCheck);
+        if (tokens.size() == 3 || tokens.size() == 2) {
+            const std::string &hanzi = tokens[0];
+            std::string_view pinyin = tokens[1];
+            float prob = 0.0F;
+            if (tokens.size() == 3) {
+                prob = std::stof(tokens[2]);
+            }
+
+            try {
+                auto result = PinyinEncoder::encodeFullPinyinWithFlags(
+                    pinyin, PinyinFuzzyFlag::VE_UE);
+                result.push_back(pinyinHanziSep);
+                result.insert(result.end(), hanzi.begin(), hanzi.end());
+                trie.set(result.data(), result.size(), prob);
+            } catch (const std::invalid_argument &e) {
+                LIBIME_ERROR()
+                    << "Failed to parse line: " << buf << ", skipping.";
+            }
+        }
+    }
+    return trie;
+}
+
+PinyinDictionary::TrieType loadBinaryImpl(std::istream &in) {
+    PinyinDictionary::TrieType trie;
+    uint32_t magic = 0;
+    uint32_t version = 0;
+    throw_if_io_fail(unmarshall(in, magic));
+    if (magic != pinyinBinaryFormatMagic) {
+        throw std::invalid_argument("Invalid pinyin magic.");
+    }
+    throw_if_io_fail(unmarshall(in, version));
+    switch (version) {
+    case 0x1:
+        trie.load(in);
+        break;
+    case pinyinBinaryFormatVersion:
+        readZSTDCompressed(
+            in, [&trie](std::istream &compressIn) { trie.load(compressIn); });
+        break;
+    default:
+        throw std::invalid_argument("Invalid pinyin version.");
+        break;
+    }
+    return trie;
+}
+
 } // namespace
 
 class PinyinMatchContext {
@@ -203,6 +275,7 @@ public:
           matchCacheMap_(&matchState->d_func()->matchCacheMap_),
           flags_(matchState->fuzzyFlags()),
           spProfile_(matchState->shuangpinProfile()),
+          correctionProfile_(matchState->correctionProfile()),
           partialLongWordLimit_(matchState->partialLongWordLimit()) {}
 
     explicit PinyinMatchContext(
@@ -210,7 +283,8 @@ public:
         const std::unordered_set<const SegmentGraphNode *> &ignore,
         NodeToMatchedPinyinPathsMap &matchedPaths)
         : graph_(graph), hasher_(graph), callback_(callback), ignore_(ignore),
-          matchedPathsMap_(&matchedPaths) {}
+          matchedPathsMap_(&matchedPaths), nodeCacheMap_(nullptr),
+          matchCacheMap_(nullptr) {}
 
     PinyinMatchContext(const PinyinMatchContext &) = delete;
 
@@ -224,6 +298,7 @@ public:
     PinyinMatchResultCache *matchCacheMap_ = nullptr;
     PinyinFuzzyFlags flags_{PinyinFuzzyFlag::None};
     std::shared_ptr<const ShuangpinProfile> spProfile_;
+    std::shared_ptr<const PinyinCorrectionProfile> correctionProfile_;
     size_t partialLongWordLimit_ = 0;
 };
 
@@ -284,9 +359,9 @@ void PinyinDictionaryPrivate::addEmptyMatch(
     }
 }
 
-PinyinTriePositions
-traverseAlongPathOneStepBySyllables(const MatchedPinyinPath &path,
-                                    const MatchedPinyinSyllables &syls) {
+PinyinTriePositions traverseAlongPathOneStepBySyllables(
+    const MatchedPinyinPath &path,
+    const MatchedPinyinSyllablesWithFuzzyFlags &syls) {
     PinyinTriePositions positions;
     for (const auto &pr : path.triePositions()) {
         uint64_t _pos;
@@ -302,24 +377,25 @@ traverseAlongPathOneStepBySyllables(const MatchedPinyinPath &path,
             }
             const auto &finals = syl.second;
 
-            auto updateNext = [fuzzies, &path, &positions](auto finalPair,
+            auto updateNext = [fuzzies, &path, &positions](PinyinFinal pyFinal,
+                                                           size_t fuzzyFactor,
                                                            auto pos) {
-                auto final = static_cast<char>(finalPair.first);
+                auto final = static_cast<char>(pyFinal);
                 auto result = path.trie()->traverse(&final, 1, pos);
 
                 if (!PinyinTrie::isNoPath(result)) {
-                    size_t newFuzzies = fuzzies + (finalPair.second ? 1 : 0);
+                    size_t newFuzzies = fuzzies + fuzzyFactor;
                     positions.emplace_back(pos, newFuzzies);
                 }
             };
             if (finals.size() > 1 || finals[0].first != PinyinFinal::Invalid) {
                 for (auto final : finals) {
-                    updateNext(final, pos);
+                    updateNext(final.first, fuzzyFactor(final.second), pos);
                 }
             } else if (!path.flags_.test(PinyinDictFlag::FullMatch)) {
                 for (char test = PinyinEncoder::firstFinal;
                      test <= PinyinEncoder::lastFinal; test++) {
-                    updateNext(std::make_pair(test, true), pos);
+                    updateNext(static_cast<PinyinFinal>(test), 1, pos);
                 }
             }
         }
@@ -328,17 +404,21 @@ traverseAlongPathOneStepBySyllables(const MatchedPinyinPath &path,
 }
 
 template <typename T>
-void matchWordsOnTrie(const MatchedPinyinPath &path, bool matchLongWord,
-                      const T &callback) {
+void matchWordsOnTrie(const PinyinTrie *userDict, const MatchedPinyinPath &path,
+                      bool matchLongWord, const T &callback) {
     for (const auto &pr : path.triePositions()) {
         uint64_t pos;
         size_t fuzzies;
         std::tie(pos, fuzzies) = pr;
-        float extraCost = fuzzies * fuzzyCost;
+        const float extraCost = fuzzies * fuzzyCost;
+        // This is an inaccuration estimation, since fuzzies may contain real
+        // fuzzy pinyin. But since this value is 10, it is a good estimate.
+        // After all 10 fuzzies in a word is kinda impossible.
+        const bool isCorrection = fuzzies >= PINYIN_CORRECTION_FUZZY_FACTOR;
         if (matchLongWord) {
             path.trie()->foreach(
-                [&path, &callback, extraCost](PinyinTrie::value_type value,
-                                              size_t len, uint64_t pos) {
+                [userDict, &path, &callback, extraCost, isCorrection](
+                    PinyinTrie::value_type value, size_t len, uint64_t pos) {
                     std::string s;
                     s.reserve(len + path.size() * 2);
                     path.trie()->suffix(s, len + path.size() * 2, pos);
@@ -350,10 +430,16 @@ void matchWordsOnTrie(const MatchedPinyinPath &path, bool matchLongWord,
                         auto hanzi = view.substr(separator + 1);
                         const size_t lengthDiff =
                             (encodedPinyin.size() / 2 - path.size());
+                        // Don't match long word for "custom".
+                        if (path.trie() == userDict && value < 0 &&
+                            lengthDiff > 0) {
+                            return true;
+                        }
                         float overLengthCost = fuzzyCost * lengthDiff;
 
                         callback(encodedPinyin, hanzi,
-                                 value + extraCost + overLengthCost);
+                                 value + extraCost + overLengthCost,
+                                 isCorrection);
                     }
                     return true;
                 },
@@ -366,15 +452,16 @@ void matchWordsOnTrie(const MatchedPinyinPath &path, bool matchLongWord,
             }
 
             path.trie()->foreach(
-                [&path, &callback, extraCost](PinyinTrie::value_type value,
-                                              size_t len, uint64_t pos) {
+                [&path, &callback, extraCost, isCorrection](
+                    PinyinTrie::value_type value, size_t len, uint64_t pos) {
                     std::string s;
                     s.reserve(len + path.size() * 2 + 1);
                     path.trie()->suffix(s, len + path.size() * 2 + 1, pos);
                     std::string_view view(s);
                     auto encodedPinyin = view.substr(0, path.size() * 2);
                     auto hanzi = view.substr(path.size() * 2 + 1);
-                    callback(encodedPinyin, hanzi, value + extraCost);
+                    callback(encodedPinyin, hanzi, value + extraCost,
+                             isCorrection);
                     return true;
                 },
                 pos);
@@ -384,6 +471,7 @@ void matchWordsOnTrie(const MatchedPinyinPath &path, bool matchLongWord,
 
 bool PinyinDictionaryPrivate::matchWordsForOnePath(
     const PinyinMatchContext &context, const MatchedPinyinPath &path) const {
+    FCITX_Q();
     bool matched = false;
     assert(path.path_.size() >= 2);
     const SegmentGraphNode &prevNode = *path.path_[path.path_.size() - 2];
@@ -404,12 +492,12 @@ bool PinyinDictionaryPrivate::matchWordsForOnePath(
     const bool matchLongWord =
         (path.path_.back() == &context.graph_.end() && matchLongWordEnabled);
 
-    auto foundOneWord = [&path, &prevNode, &matched,
-                         &context](std::string_view encodedPinyin,
-                                   WordNode &word, float cost) {
-        context.callback_(
-            path.path_, word, cost,
-            std::make_unique<PinyinLatticeNodePrivate>(encodedPinyin));
+    auto foundOneWord = [&path, &prevNode, &matched, &context](
+                            std::string_view encodedPinyin, WordNode &word,
+                            float cost, bool isCorrection) {
+        context.callback_(path.path_, word, cost,
+                          std::make_unique<PinyinLatticeNodePrivate>(
+                              encodedPinyin, isCorrection));
         if (path.size() == 1 &&
             path.path_[path.path_.size() - 2] == &prevNode) {
             matched = true;
@@ -426,26 +514,31 @@ bool PinyinDictionaryPrivate::matchWordsForOnePath(
             result->clear();
 
             auto &items = *result;
-            matchWordsOnTrie(path, matchLongWordEnabled,
-                             [&items](std::string_view encodedPinyin,
-                                      std::string_view hanzi, float cost) {
-                                 items.emplace_back(hanzi, cost, encodedPinyin);
-                             });
+            matchWordsOnTrie(
+                q->trie(PinyinDictionary::UserDict), path, matchLongWordEnabled,
+                [&items](std::string_view encodedPinyin, std::string_view hanzi,
+                         float cost, bool isCorrection) {
+                    items.emplace_back(hanzi, cost, encodedPinyin,
+                                       isCorrection);
+                });
         }
         for (auto &item : *result) {
             if (!matchLongWord &&
                 item.encodedPinyin_.size() / 2 > path.size()) {
                 continue;
             }
-            foundOneWord(item.encodedPinyin_, item.word_, item.value_);
+            foundOneWord(item.encodedPinyin_, item.word_, item.value_,
+                         item.isCorrection_);
         }
     } else {
-        matchWordsOnTrie(path, matchLongWord,
-                         [&foundOneWord](std::string_view encodedPinyin,
-                                         std::string_view hanzi, float cost) {
-                             WordNode word(hanzi, InvalidWordIndex);
-                             foundOneWord(encodedPinyin, word, cost);
-                         });
+        matchWordsOnTrie(
+            q->trie(PinyinDictionary::UserDict), path, matchLongWord,
+            [&foundOneWord](std::string_view encodedPinyin,
+                            std::string_view hanzi, float cost,
+                            bool isCorrection) {
+                WordNode word(hanzi, InvalidWordIndex);
+                foundOneWord(encodedPinyin, word, cost, isCorrection);
+            });
     }
 
     return matched;
@@ -490,9 +583,10 @@ void PinyinDictionaryPrivate::findMatchesBetween(
 
     const auto syls =
         context.spProfile_
-            ? PinyinEncoder::shuangpinToSyllables(pinyin, *context.spProfile_,
-                                                  context.flags_)
-            : PinyinEncoder::stringToSyllables(pinyin, context.flags_);
+            ? PinyinEncoder::shuangpinToSyllablesWithFuzzyFlags(
+                  pinyin, *context.spProfile_, context.flags_)
+            : PinyinEncoder::stringToSyllablesWithFuzzyFlags(
+                  pinyin, context.correctionProfile_.get(), context.flags_);
     const MatchedPinyinPaths &prevMatchedPaths = matchedPathsMap[&prevNode];
     MatchedPinyinPaths newPaths;
     for (const auto &path : prevMatchedPaths) {
@@ -691,6 +785,7 @@ void PinyinDictionary::matchWordsPrefix(const char *data, size_t size,
                     return callback(view.substr(0, sep), view.substr(sep + 1),
                                     value);
                 }
+                return true;
             },
             node.second);
     }
@@ -717,88 +812,27 @@ void PinyinDictionary::load(size_t idx, const char *filename,
 
 void PinyinDictionary::load(size_t idx, std::istream &in,
                             PinyinDictFormat format) {
+    setTrie(idx, load(in, format));
+}
+
+PinyinDictionary::TrieType PinyinDictionary::load(std::istream &in,
+                                                  PinyinDictFormat format) {
     switch (format) {
     case PinyinDictFormat::Text:
-        loadText(idx, in);
-        break;
+        return loadTextImpl(in);
     case PinyinDictFormat::Binary:
-        loadBinary(idx, in);
-        break;
+        return loadBinaryImpl(in);
     default:
         throw std::invalid_argument("invalid format type");
     }
-    emit<PinyinDictionary::dictionaryChanged>(idx);
 }
 
 void PinyinDictionary::loadText(size_t idx, std::istream &in) {
-    DATrie<float> trie;
-
-    std::string buf;
-    auto isSpaceCheck = boost::is_any_of(" \n\t\r\v\f");
-    while (!in.eof()) {
-        if (!std::getline(in, buf)) {
-            break;
-        }
-
-        boost::trim_if(buf, isSpaceCheck);
-        std::vector<std::string> tokens;
-        boost::split(tokens, buf, isSpaceCheck);
-        if (tokens.size() == 3 || tokens.size() == 2) {
-            const std::string &hanzi = tokens[0];
-            std::string_view pinyin = tokens[1];
-            float prob = 0.0F;
-            if (tokens.size() == 3) {
-                prob = std::stof(tokens[2]);
-            }
-
-            try {
-                auto result = PinyinEncoder::encodeFullPinyinWithFlags(
-                    pinyin, PinyinFuzzyFlag::VE_UE);
-                result.push_back(pinyinHanziSep);
-                result.insert(result.end(), hanzi.begin(), hanzi.end());
-                trie.set(result.data(), result.size(), prob);
-            } catch (const std::invalid_argument &e) {
-                LIBIME_ERROR()
-                    << "Failed to parse line: " << buf << ", skipping.";
-            }
-        }
-    }
-    *mutableTrie(idx) = std::move(trie);
+    *mutableTrie(idx) = loadTextImpl(in);
 }
 
 void PinyinDictionary::loadBinary(size_t idx, std::istream &in) {
-    DATrie<float> trie;
-    uint32_t magic = 0;
-    uint32_t version = 0;
-    throw_if_io_fail(unmarshall(in, magic));
-    if (magic != pinyinBinaryFormatMagic) {
-        throw std::invalid_argument("Invalid pinyin magic.");
-    }
-    throw_if_io_fail(unmarshall(in, version));
-    switch (version) {
-    case 0x1:
-        trie.load(in);
-        break;
-    case pinyinBinaryFormatVersion: {
-        boost::iostreams::filtering_istreambuf compressBuf;
-        compressBuf.push(ZSTDDecompressor());
-        compressBuf.push(in);
-        std::istream compressIn(&compressBuf);
-
-        trie.load(compressIn);
-        // We don't want to read any data, but only trigger the zstd footer
-        // handling, which validates CRC.
-        compressIn.peek();
-        if (compressIn.bad()) {
-            throw std::invalid_argument("Failed to load dict data");
-        }
-        break;
-    }
-    default:
-        throw std::invalid_argument("Invalid pinyin version.");
-        break;
-    }
-    *mutableTrie(idx) = std::move(trie);
+    *mutableTrie(idx) = loadBinaryImpl(in);
 }
 
 void PinyinDictionary::save(size_t idx, const char *filename,
@@ -818,12 +852,9 @@ void PinyinDictionary::save(size_t idx, std::ostream &out,
         throw_if_io_fail(marshall(out, pinyinBinaryFormatMagic));
         throw_if_io_fail(marshall(out, pinyinBinaryFormatVersion));
 
-        boost::iostreams::filtering_streambuf<boost::iostreams::output>
-            compressBuf;
-        compressBuf.push(ZSTDCompressor());
-        compressBuf.push(out);
-        std::ostream compressOut(&compressBuf);
-        mutableTrie(idx)->save(compressOut);
+        writeZSTDCompressed(out, [this, idx](std::ostream &compressOut) {
+            mutableTrie(idx)->save(compressOut);
+        });
     } break;
     default:
         throw std::invalid_argument("invalid format type");
@@ -859,6 +890,21 @@ void PinyinDictionary::addWord(size_t idx, std::string_view fullPinyin,
     result.insert(result.end(), hanzi.begin(), hanzi.end());
     TrieDictionary::addWord(idx, std::string_view(result.data(), result.size()),
                             cost);
+}
+
+std::optional<float>
+PinyinDictionary::lookupWord(size_t idx, std::string_view fullPinyin,
+                             std::string_view hanzi) const {
+    auto result = PinyinEncoder::encodeFullPinyinWithFlags(
+        fullPinyin, PinyinFuzzyFlag::VE_UE);
+    result.push_back(pinyinHanziSep);
+    result.insert(result.end(), hanzi.begin(), hanzi.end());
+    auto value = trie(idx)->exactMatchSearch(
+        std::string_view(result.data(), result.size()));
+    if (PinyinTrie::isValid(value)) {
+        return value;
+    }
+    return std::nullopt;
 }
 
 bool PinyinDictionary::removeWord(size_t idx, std::string_view fullPinyin,

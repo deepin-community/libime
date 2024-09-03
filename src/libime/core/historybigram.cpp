@@ -10,12 +10,10 @@
 #include "zstdfilter.h"
 #include <boost/algorithm/cxx11/all_of.hpp>
 #include <boost/algorithm/string.hpp>
-#include <boost/iostreams/filtering_streambuf.hpp>
 #include <boost/range/adaptor/reversed.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/algorithm.hpp>
 #include <cmath>
-#include <fcitx-utils/log.h>
 #include <fcitx-utils/stringutils.h>
 #include <iterator>
 #include <ostream>
@@ -41,7 +39,7 @@ public:
 
     int32_t freq(std::string_view s) const {
         auto v = trie_.exactMatchSearch(s.data(), s.size());
-        if (trie_.isNoValue(v)) {
+        if (TrieType::isNoValue(v)) {
             return 0;
         }
         return v;
@@ -442,10 +440,11 @@ bool HistoryBigram::useOnlyUnigram() const {
 
 void HistoryBigram::add(const libime::SentenceResult &sentence) {
     FCITX_D();
-    d->populateSentence(
-        d->pools_[0].add(sentence.sentence() |
-                         boost::adaptors::transformed(
-                             [](const auto &item) { return item->word(); })));
+    d->populateSentence(d->pools_[0].add(
+        sentence.sentence() | boost::adaptors::transformed(
+                                  [](const auto &item) -> const std::string & {
+                                      return item->word();
+                                  })));
 }
 
 void HistoryBigram::add(const std::vector<std::string> &sentence) {
@@ -507,25 +506,15 @@ void HistoryBigram::load(std::istream &in) {
     case 2:
         boost::range::for_each(d->pools_, [&in](auto &pool) { pool.load(in); });
         break;
-    case historyBinaryFormatVersion: {
-        boost::iostreams::filtering_istreambuf compressBuf;
-        compressBuf.push(ZSTDDecompressor());
-        compressBuf.push(in);
-        std::istream compressIn(&compressBuf);
-
-        boost::range::for_each(
-            d->pools_, [&compressIn](auto &pool) { pool.load(compressIn); });
-        // We don't want to read any data, but only trigger the zstd footer
-        // handling, which validates CRC.
-        compressIn.peek();
-        if (compressIn.bad()) {
-            throw std::invalid_argument("Failed to validate the history data");
-        }
+    case historyBinaryFormatVersion:
+        readZSTDCompressed(in, [d](std::istream &compressIn) {
+            boost::range::for_each(d->pools_, [&compressIn](auto &pool) {
+                pool.load(compressIn);
+            });
+        });
         break;
-    }
-    default: {
+    default:
         throw std::invalid_argument("Invalid history version.");
-    }
     }
 }
 
@@ -538,13 +527,11 @@ void HistoryBigram::save(std::ostream &out) {
     FCITX_D();
     throw_if_io_fail(marshall(out, historyBinaryFormatMagic));
     throw_if_io_fail(marshall(out, historyBinaryFormatVersion));
-    boost::iostreams::filtering_streambuf<boost::iostreams::output> compressBuf;
-    compressBuf.push(ZSTDCompressor());
-    compressBuf.push(out);
-    std::ostream compressOut(&compressBuf);
 
-    boost::range::for_each(
-        d->pools_, [&compressOut](auto &pool) { pool.save(compressOut); });
+    writeZSTDCompressed(out, [d](std::ostream &compressOut) {
+        boost::range::for_each(
+            d->pools_, [&compressOut](auto &pool) { pool.save(compressOut); });
+    });
 }
 
 void HistoryBigram::dump(std::ostream &out) {
@@ -579,7 +566,7 @@ void HistoryBigram::fillPredict(std::unordered_set<std::string> &words,
     }
     lookup += "|";
     boost::range::for_each(
-        d->pools_, [&words, lookup, maxSize](const HistoryBigramPool &pool) {
+        d->pools_, [&words, &lookup, maxSize](const HistoryBigramPool &pool) {
             pool.fillPredict(words, lookup, maxSize);
         });
 }

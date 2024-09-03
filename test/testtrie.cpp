@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "libime/core/datrie.h"
-#include <cmath>
 #include <cstring>
 #include <fcitx-utils/log.h>
 
@@ -40,8 +39,8 @@ int main() {
         FCITX_ASSERT(trie.size() == 4);
         DATrie<float>::position_type pos = 0;
         auto result = trie.traverse("aaa", pos);
-        auto nan1 = std::nanf("1");
-        auto nan2 = std::nanf("2");
+        auto nan1 = trie.noValue();
+        auto nan2 = trie.noPath();
         // NaN != NaN, we must use memcmp to do this.
         FCITX_ASSERT(memcmp(&nan1, &result, sizeof(float)) == 0);
         FCITX_ASSERT(trie.isNoValue(result));

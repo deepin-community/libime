@@ -10,13 +10,13 @@
 #include "libime/pinyin/pinyincontext.h"
 #include "libime/pinyin/pinyindecoder.h"
 #include "libime/pinyin/pinyindictionary.h"
+#include "libime/pinyin/pinyinencoder.h"
 #include "libime/pinyin/pinyinime.h"
 #include "testdir.h"
 #include <array>
-#include <boost/range/adaptor/transformed.hpp>
 #include <fcitx-utils/log.h>
-#include <fcitx-utils/stringutils.h>
 #include <sstream>
+#include <string_view>
 
 using namespace libime;
 
@@ -166,6 +166,71 @@ int main() {
                 << " Expected: " << expectedCursor[i];
         }
         FCITX_ASSERT(c.preedit(PinyinPreeditMode::RawText) == "xi ' an");
+    }
+
+    {
+        c.clear();
+        c.type("nianglanghang");
+        size_t i = 0;
+        for (const auto &candidate : c.candidatesToCursor()) {
+            if (candidate.toString() == "娘") {
+                break;
+            }
+            i++;
+        }
+        FCITX_ASSERT(i < c.candidatesToCursor().size());
+        c.selectCandidatesToCursor(i);
+        i = c.size();
+        while (i > 0) {
+            --i;
+            c.setCursor(i);
+            c.candidatesToCursor();
+        }
+    }
+
+    {
+        c.clear();
+        c.type("hellonihao");
+        c.selectCustom(5, "Hello");
+        size_t i = 0;
+        for (const auto &candidate : c.candidatesToCursor()) {
+            if (candidate.toString() == "你") {
+                break;
+            }
+            i++;
+        }
+        FCITX_ASSERT(i < c.candidatesToCursor().size());
+        c.selectCandidatesToCursor(i);
+
+        FCITX_ASSERT(!c.selected());
+        c.selectCustom(3, "What");
+
+        FCITX_ASSERT(c.selected());
+        FCITX_ASSERT(c.selectedSentence() == "Hello你What");
+    }
+
+    {
+        c.clear();
+        c.type("shounihao");
+        auto shouPinyin = PinyinEncoder::encodeFullPinyin("shou");
+        c.selectCustom(4, "✋",
+                       std::string_view(shouPinyin.data(), shouPinyin.size()));
+        size_t i = 0;
+        for (const auto &candidate : c.candidatesToCursor()) {
+            if (candidate.toString() == "你好") {
+                break;
+            }
+            i++;
+        }
+        FCITX_ASSERT(i < c.candidatesToCursor().size());
+        c.selectCandidatesToCursor(i);
+
+        FCITX_ASSERT(c.selected());
+        c.learn();
+
+        c.clear();
+        c.type("shounihao");
+        FCITX_ASSERT(c.candidatesToCursorSet().count("✋你好") > 0);
     }
 
     return 0;

@@ -25,9 +25,6 @@ template <typename V, bool ORDERED = true, int MAX_TRIAL = 1>
 class DATriePrivate;
 
 template <typename T>
-class DATrie;
-
-template <typename T>
 struct NaN {
     static constexpr auto N1 = -1;
     static constexpr auto N2 = -2;
@@ -52,11 +49,11 @@ struct NaN<float> {
 template <typename T>
 class DATrie {
 public:
-    typedef T value_type;
-    typedef uint64_t position_type;
-    typedef std::function<bool(value_type, size_t, position_type)>
-        callback_type;
-    typedef std::function<value_type(value_type)> updater_type;
+    using value_type = T;
+    using position_type = uint64_t;
+    using callback_type =
+        std::function<bool(value_type, size_t, position_type)>;
+    using updater_type = std::function<value_type(value_type)>;
 
     /*
      * The actual value may be different on different CPU, use isNoValue
@@ -87,6 +84,8 @@ public:
     value_type exactMatchSearch(std::string_view key) const {
         return exactMatchSearch(key.data(), key.size());
     }
+
+    bool hasExactMatch(std::string_view key) const;
 
     DATrie<T>::value_type traverse(std::string_view key,
                                    position_type &from) const {
@@ -133,6 +132,9 @@ public:
     static bool isValid(value_type v);
     static bool isNoPath(value_type v);
     static bool isNoValue(value_type v);
+
+    static value_type noPath();
+    static value_type noValue();
 
     size_t mem_size() const;
 

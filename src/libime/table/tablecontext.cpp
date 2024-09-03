@@ -5,7 +5,6 @@
  */
 #include "tablecontext.h"
 #include "constants.h"
-#include "libime/core/decoder.h"
 #include "libime/core/historybigram.h"
 #include "libime/core/segmentgraph.h"
 #include "libime/core/userlanguagemodel.h"
@@ -15,10 +14,7 @@
 #include "tabledecoder.h"
 #include "tableoptions.h"
 #include "tablerule.h"
-#include <boost/ptr_container/ptr_vector.hpp>
-#include <chrono>
 #include <fcitx-utils/log.h>
-#include <fcitx-utils/stringutils.h>
 #include <fcitx-utils/utf8.h>
 #include <regex>
 
@@ -525,7 +521,8 @@ void TableContext::update() {
         };
 
         auto &graph = d->graph_;
-        auto bos = &graph.start(), eos = &graph.end();
+        const SegmentGraphNode *bos = &graph.start();
+        const SegmentGraphNode *eos = &graph.end();
         constexpr float pinyinPenalty = -0.5;
         for (const auto &latticeNode : d->lattice_.nodes(eos)) {
             if (latticeNode.from() == bos && latticeNode.to() == eos) {
@@ -557,7 +554,7 @@ void TableContext::update() {
             }
             // Check the limit, or if there's no candidate.
             if (min - score < minDistance || candidates().empty()) {
-                insertCandidate(sentence);
+                insertCandidate(std::move(sentence));
             }
         }
         t1 = std::chrono::high_resolution_clock::now();

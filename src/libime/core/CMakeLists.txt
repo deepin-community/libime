@@ -13,7 +13,9 @@ add_library(kenlm STATIC ${KENLM_SRCS})
 target_include_directories(kenlm PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/kenlm>)
 target_compile_definitions(kenlm PUBLIC -DKENLM_MAX_ORDER=3 PRIVATE -DNDEBUG)
 target_link_libraries(kenlm PUBLIC Boost::boost PkgConfig::ZSTD)
-set_target_properties(kenlm PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(kenlm PROPERTIES
+  CXX_STANDARD 11
+  POSITION_INDEPENDENT_CODE ON)
 
 if(UNIX)
   check_library_exists(rt clock_gettime "clock_gettime from librt" HAVE_CLOCKGETTIME_RT)
@@ -79,7 +81,7 @@ target_include_directories(IMECore PUBLIC
 
 target_link_libraries(IMECore PUBLIC Fcitx5::Utils Boost::boost PRIVATE kenlm Boost::iostreams PkgConfig::ZSTD)
 
-install(TARGETS IMECore EXPORT LibIMECoreTargets LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+install(TARGETS IMECore EXPORT LibIMECoreTargets LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT lib)
 install(FILES ${LIBIME_HDRS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/LibIME/libime/core" COMPONENT header)
 
 add_library(LibIME::Core ALIAS IMECore)
@@ -91,9 +93,13 @@ configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/LibIMECoreConfig.cmak
 
 generate_export_header(IMECore BASE_NAME LibIMECore)
 
-install(EXPORT LibIMECoreTargets DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/LibIMECore" FILE LibIMECoreTargets.cmake NAMESPACE LibIME:: )
+install(EXPORT LibIMECoreTargets
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/LibIMECore"
+        FILE LibIMECoreTargets.cmake
+        NAMESPACE LibIME::
+        COMPONENT Devel)
 
 install(FILES  "${CMAKE_CURRENT_BINARY_DIR}/LibIMECoreConfig.cmake"
                "${CMAKE_CURRENT_BINARY_DIR}/LibIMECoreConfigVersion.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/LibIMECore"
-        COMPONENT Devel )
+        COMPONENT Devel)

@@ -14,7 +14,6 @@
 #include <memory>
 #include <set>
 #include <string>
-#include <unordered_map>
 
 namespace libime {
 
@@ -32,10 +31,9 @@ class ShuangpinProfilePrivate;
 
 class LIBIMEPINYIN_EXPORT ShuangpinProfile {
 public:
-    typedef std::map<std::string,
-                     std::multimap<PinyinSyllable, PinyinFuzzyFlags>>
-        TableType;
-    typedef std::set<char> ValidInputSetType;
+    using TableType =
+        std::map<std::string, std::multimap<PinyinSyllable, PinyinFuzzyFlags>>;
+    using ValidInputSetType = std::set<char>;
     explicit ShuangpinProfile(ShuangpinBuiltinProfile profile);
     explicit ShuangpinProfile(std::istream &in);
 

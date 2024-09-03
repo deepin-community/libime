@@ -25,11 +25,11 @@ add_custom_target(lm-predict ALL DEPENDS "${LM_PREDICT_OUTPUT}")
 install(FILES "${LM_OUTPUT}" RENAME zh_CN.lm DESTINATION "${LIBIME_INSTALL_LIBDATADIR}")
 install(FILES "${LM_PREDICT_OUTPUT}" RENAME zh_CN.lm.predict DESTINATION "${LIBIME_INSTALL_LIBDATADIR}")
 
-set(DICT_TAR "dict-20230412.tar.xz")
+set(DICT_TAR "dict-20240416.tar.zst")
 set(DICT_URL "https://download.fcitx-im.org/data/${DICT_TAR}")
 
 fcitx5_download(dict-download ${DICT_URL} ${DICT_TAR}
-               f05fccaff9687900aac3d9ad5a81b20888b573201403fbcd9bbc7907d9e97507)
+               9c262cbfa306cb4c3b055991b7e22b453e0f267f20ceb5d9d9e5f8fbe4f2d367)
 fcitx5_extract(dict-extract ${DICT_TAR} DEPENDS dict-download
                OUTPUT dict_sc.txt dict_extb.txt)
 
@@ -49,12 +49,12 @@ add_custom_command(
 add_custom_target(dict ALL DEPENDS "${DICT_OUTPUT}" "${DICT_EXTB_OUTPUT}")
 install(FILES "${DICT_OUTPUT}" "${DICT_EXTB_OUTPUT}" DESTINATION "${LIBIME_INSTALL_PKGDATADIR}")
 
-set(TABLE_DICT_URL "https://download.fcitx-im.org/data/table.tar.gz")
-set(TABLE_DICT_TAR "table.tar.gz")
+set(TABLE_DICT_URL "https://download.fcitx-im.org/data/table-20240108.tar.gz")
+set(TABLE_DICT_TAR "table-20240108.tar.gz")
 set(TABLE_TXT_FILES db.txt erbi.txt qxm.txt wanfeng.txt
                       wbpy.txt wbx.txt zrm.txt cj.txt)
 fcitx5_download(table-dict-download ${TABLE_DICT_URL} ${TABLE_DICT_TAR}
-                6196053c724125e3ae3d8bd6b2f9172d0c83b65b0d410d3cde63b7a8d6ab87b7)
+                729c596d86907de727c74d0fc3fd241c406c5debd2b4cb74eefe022387ee9dae)
 fcitx5_extract(table-dict-extract ${TABLE_DICT_TAR} DEPENDS table-dict-download
                OUTPUT ${TABLE_TXT_FILES})
 

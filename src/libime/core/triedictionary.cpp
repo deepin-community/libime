@@ -7,18 +7,8 @@
 #include "triedictionary.h"
 
 #include "libime/core/datrie.h"
-#include "libime/core/lattice.h"
-#include "libime/core/lrucache.h"
-#include "libime/core/utils.h"
-#include <boost/algorithm/string.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
-#include <boost/unordered_map.hpp>
-#include <cmath>
-#include <fstream>
-#include <iomanip>
-#include <queue>
 #include <string_view>
-#include <type_traits>
 
 namespace libime {
 
@@ -71,6 +61,12 @@ void TrieDictionary::clear(size_t idx) {
 const TrieDictionary::TrieType *TrieDictionary::trie(size_t idx) const {
     FCITX_D();
     return &d->tries_[idx];
+}
+
+void TrieDictionary::setTrie(size_t idx, TrieType trie) {
+    FCITX_D();
+    *mutableTrie(idx) = std::move(trie);
+    emit<TrieDictionary::dictionaryChanged>(idx);
 }
 
 TrieDictionary::TrieType *TrieDictionary::mutableTrie(size_t idx) {
