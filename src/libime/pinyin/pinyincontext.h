@@ -18,7 +18,6 @@
 namespace libime {
 class PinyinIME;
 class PinyinContextPrivate;
-class LatticeNode;
 enum class PinyinPreeditMode;
 
 class LIBIMEPINYIN_EXPORT PinyinContext : public InputBuffer {
@@ -58,6 +57,19 @@ public:
     void selectCandidatesToCursor(size_t idx);
     void cancel();
     bool cancelTill(size_t pos);
+
+    /**
+     * Create a custom selection
+     *
+     * This allows Engine to do make a custom selection that is not pinyin.
+     *
+     * @param inputLength the length of characters to match in the input
+     * @param segment segment
+     * @param encodedPinyin whether this segment has a pinyin
+     * @since 1.1.7
+     */
+    void selectCustom(size_t inputLength, std::string_view segment,
+                      std::string_view encodedPinyin = "");
 
     /// Whether the input is fully selected.
     bool selected() const;

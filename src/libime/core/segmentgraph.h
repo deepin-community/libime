@@ -8,21 +8,16 @@
 
 #include "libimecore_export.h"
 #include <boost/iterator/transform_iterator.hpp>
-#include <boost/ptr_container/ptr_list.hpp>
 #include <boost/range/adaptor/type_erased.hpp>
-#include <boost/range/iterator_range.hpp>
 #include <fcitx-utils/element.h>
 #include <functional>
 #include <list>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 
 namespace libime {
 
-class Lattice;
 class SegmentGraphBase;
-class SegmentGraph;
 class SegmentGraphNode;
 typedef std::function<bool(const SegmentGraphBase &graph,
                            const std::vector<size_t> &)>
@@ -258,6 +253,7 @@ public:
     }
 
     SegmentGraphNodeConstRange nodes(size_t idx) const override {
+        assert(idx < graph_.size());
         if (graph_[idx]) {
             return {graph_[idx].get(), graph_[idx].get() + 1};
         }
@@ -362,6 +358,7 @@ private:
     }
 
     SegmentGraphNodeRange mutableNodes(size_t idx) {
+        assert(idx < graph_.size());
         if (graph_[idx]) {
             return {graph_[idx].get(), graph_[idx].get() + 1};
         }

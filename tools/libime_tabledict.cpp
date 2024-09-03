@@ -6,14 +6,19 @@
 
 #include "libime/table/tablebaseddictionary.h"
 #include <fstream>
-#include <getopt.h>
 #include <iostream>
-#include <tuple>
+#include <optional>
+#include <string>
+#include <unistd.h>
 
 void usage(const char *argv0) {
-    std::cout << "Usage: " << argv0 << " [-du] <source> <dest>" << std::endl
+    std::cout << "Usage: " << argv0
+              << " [-due] [-m <main dict>] <source> <dest>" << std::endl
               << "-d: Dump binary to text" << std::endl
               << "-u: User dict" << std::endl
+              << "-e: Extra dict" << std::endl
+              << "-m <path/to/main.dict>: Main dict to be used with extra dict"
+              << std::endl
               << "-h: Show this help" << std::endl;
 }
 
@@ -21,14 +26,22 @@ int main(int argc, char *argv[]) {
 
     bool dump = false;
     bool user = false;
+    bool extra = false;
+    std::optional<std::string> extraMain = std::nullopt;
     int c;
-    while ((c = getopt(argc, argv, "dhu")) != -1) {
+    while ((c = getopt(argc, argv, "dhuem:")) != -1) {
         switch (c) {
         case 'd':
             dump = true;
             break;
         case 'u':
             user = true;
+            break;
+        case 'e':
+            extra = true;
+            break;
+        case 'm':
+            extraMain = std::string(optarg);
             break;
         case 'h':
             usage(argv[0]);
@@ -55,10 +68,19 @@ int main(int argc, char *argv[]) {
         in = &fin;
     }
 
-    if (user) {
-        dict.loadUser(*in, dump ? TableFormat::Binary : TableFormat::Text);
+    const auto inputFormat = dump ? TableFormat::Binary : TableFormat::Text;
+    const auto outputFormat = dump ? TableFormat::Text : TableFormat::Binary;
+    size_t extraIndex = 0;
+    if (extra && extraMain) {
+        dict.load(extraMain->c_str(), libime::TableFormat::Binary);
+    }
+
+    if (extra) {
+        extraIndex = dict.loadExtra(*in, inputFormat);
+    } else if (user) {
+        dict.loadUser(*in, inputFormat);
     } else {
-        dict.load(*in, dump ? TableFormat::Binary : TableFormat::Text);
+        dict.load(*in, inputFormat);
     }
 
     std::ofstream fout;
@@ -70,10 +92,12 @@ int main(int argc, char *argv[]) {
         out = &fout;
     }
 
-    if (user) {
-        dict.saveUser(*out, dump ? TableFormat::Text : TableFormat::Binary);
+    if (extra) {
+        dict.saveExtra(extraIndex, *out, outputFormat);
+    } else if (user) {
+        dict.saveUser(*out, outputFormat);
     } else {
-        dict.save(*out, dump ? TableFormat::Text : TableFormat::Binary);
+        dict.save(*out, outputFormat);
     }
     return 0;
 }

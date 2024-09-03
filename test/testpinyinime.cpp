@@ -15,15 +15,11 @@
 #include "libime/pinyin/shuangpinprofile.h"
 #include "testdir.h"
 #include "testutils.h"
-#include <boost/algorithm/string.hpp>
 #include <boost/iostreams/device/null.hpp>
 #include <boost/iostreams/stream.hpp>
-#include <boost/range/adaptor/transformed.hpp>
 #include <fcitx-utils/log.h>
-#include <fcitx-utils/stringutils.h>
 #include <fstream>
 #include <functional>
-#include <sstream>
 
 using namespace libime;
 
@@ -64,6 +60,14 @@ int main(int argc, char *argv[]) {
             c.clear();
         } else if (word == "cancel") {
             c.cancel();
+        } else if (word == "left") {
+            if (c.cursor() > 0) {
+                c.setCursor(c.cursor() - 1);
+            }
+        } else if (word == "right") {
+            if (c.cursor() < c.size()) {
+                c.setCursor(c.cursor() + 1);
+            }
         } else if (word.size() == 1 &&
                    (('a' <= word[0] && word[0] <= 'z') ||
                     (!c.userInput().empty() && word[0] == '\''))) {
@@ -92,7 +96,7 @@ int main(int argc, char *argv[]) {
         std::cout << "PREEDIT:  " << c.preedit() << std::endl;
         std::cout << "SENTENCE: " << c.sentence() << std::endl;
         size_t count = 1;
-        for (const auto &candidate : c.candidates()) {
+        for (const auto &candidate : c.candidatesToCursor()) {
             std::cout << (count % 10) << ": ";
             for (const auto *node : candidate.sentence()) {
                 const auto &pinyin =

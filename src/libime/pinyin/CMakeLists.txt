@@ -10,6 +10,7 @@ set(LIBIME_PINYIN_HDRS
     pinyinprediction.h
     shuangpindata.h
     shuangpinprofile.h
+    pinyincorrectionprofile.h
     ${CMAKE_CURRENT_BINARY_DIR}/libimepinyin_export.h
     )
 
@@ -23,6 +24,7 @@ set(LIBIME_PINYIN_SRCS
     pinyinmatchstate.cpp
     shuangpinprofile.cpp
     pinyinprediction.cpp
+    pinyincorrectionprofile.cpp
     )
 
 ecm_setup_version(PROJECT
@@ -43,7 +45,7 @@ target_include_directories(IMEPinyin PUBLIC
 
 target_link_libraries(IMEPinyin PUBLIC Fcitx5::Utils Boost::boost LibIME::Core PRIVATE Boost::iostreams PkgConfig::ZSTD)
 
-install(TARGETS IMEPinyin EXPORT LibIMEPinyinTargets LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+install(TARGETS IMEPinyin EXPORT LibIMEPinyinTargets LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT lib)
 install(FILES ${LIBIME_PINYIN_HDRS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/LibIME/libime/pinyin" COMPONENT header)
 
 add_library(LibIME::Pinyin ALIAS IMEPinyin)
@@ -55,10 +57,14 @@ configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/LibIMEPinyinConfig.cm
 
 generate_export_header(IMEPinyin BASE_NAME LibIMEPinyin)
 
-install(EXPORT LibIMEPinyinTargets DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/LibIMEPinyin" FILE LibIMEPinyinTargets.cmake NAMESPACE LibIME:: )
+install(EXPORT LibIMEPinyinTargets
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/LibIMEPinyin"
+        FILE LibIMEPinyinTargets.cmake
+        NAMESPACE LibIME::
+        COMPONENT Devel)
 
 install(FILES  "${CMAKE_CURRENT_BINARY_DIR}/LibIMEPinyinConfig.cmake"
                "${CMAKE_CURRENT_BINARY_DIR}/LibIMEPinyinConfigVersion.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/LibIMEPinyin"
-        COMPONENT Devel )
+        COMPONENT Devel)
 

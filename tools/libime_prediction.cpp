@@ -11,9 +11,9 @@
 #include <cmath>
 #include <fcitx-utils/log.h>
 #include <fstream>
-#include <getopt.h>
 #include <iostream>
 #include <string>
+#include <unistd.h>
 #include <unordered_map>
 #include <vector>
 
@@ -29,8 +29,8 @@ void usage(const char *argv0) {
 
 float score(const libime::LanguageModel &model, std::string_view w,
             std::string_view w2) {
-    auto state = model.nullState();
-    return model.wordsScore(state, std::vector<std::string_view>{w, w2});
+    return model.wordsScore(model.nullState(),
+                            std::vector<std::string_view>{w, w2});
 }
 
 void parse(const char *modelFile, const char *arpa, const char *output,

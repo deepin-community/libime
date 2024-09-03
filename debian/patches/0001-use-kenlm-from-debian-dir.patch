@@ -2,13 +2,13 @@ From: Shengjing Zhu <zhsj@debian.org>
 Date: Thu, 12 Mar 2020 13:18:15 +0800
 Subject: use kenlm from debian dir
 
-Last-Update: 2023-09-30
+Last-Update: 2024-01-06
 ---
  src/libime/core/CMakeLists.txt | 4 +++-
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/src/libime/core/CMakeLists.txt b/src/libime/core/CMakeLists.txt
-index f78ba64..7854d74 100644
+index 89dd191..a7a54be 100644
 --- a/src/libime/core/CMakeLists.txt
 +++ b/src/libime/core/CMakeLists.txt
 @@ -9,10 +9,12 @@ foreach(f ${__KENLM_SRCS})
@@ -22,6 +22,6 @@ index f78ba64..7854d74 100644
  target_compile_definitions(kenlm PUBLIC -DKENLM_MAX_ORDER=3 PRIVATE -DNDEBUG)
 -target_link_libraries(kenlm PUBLIC Boost::boost PkgConfig::ZSTD)
 +target_link_libraries(kenlm PUBLIC Boost::boost PkgConfig::ZSTD PUBLIC double-conversion::double-conversion)
- set_target_properties(kenlm PROPERTIES POSITION_INDEPENDENT_CODE ON)
- 
- if(UNIX)
+ set_target_properties(kenlm PROPERTIES
+   CXX_STANDARD 11
+   POSITION_INDEPENDENT_CODE ON)
