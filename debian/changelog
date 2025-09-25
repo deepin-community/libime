@@ -1,3 +1,9 @@
+libime (1.1.8-1deepin2) unstable; urgency=medium
+
+  * feat: Support extend table files
+
+ -- re2zero <yangwu@uniontech.com>  Thu, 25 Sep 2025 16:37:55 +0800
+
 libime (1.1.8-1deepin1) unstable; urgency=medium
 
   * feat: add sw64 support.
