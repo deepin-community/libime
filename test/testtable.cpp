@@ -4,17 +4,26 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
+#include "libime/core/segmentgraph.h"
 #include "libime/table/tablebaseddictionary.h"
 #include "libime/table/tabledecoder.h"
 #include "libime/table/tableoptions.h"
 #include "libime/table/tablerule.h"
 #include "testdir.h"
+#include <cstddef>
+#include <cstdint>
 #include <fcitx-utils/log.h>
+#include <ios>
+#include <iostream>
+#include <optional>
+#include <ostream>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unistd.h>
+#include <vector>
 
 using namespace libime;
 
@@ -321,7 +330,7 @@ void testEscape() {
     FCITX_ASSERT(out.str() == expect) << out.str();
 }
 
-void testOneMatchingWord() {
+void testExtraDict() {
     libime::TableBasedDictionary table;
     {
         std::string test = "KeyCode=abcdefghijklmnopqrstuvwxy\n"
@@ -361,9 +370,20 @@ void testOneMatchingWord() {
     FCITX_ASSERT(extraIndex == 1);
     table.saveExtra(extraIndex, std::cout, libime::TableFormat::Text);
     testMatchIndex(table, "xynn", 4);
+
+    // Test load [词组]
+    table.removeAllExtra();
+    {
+        std::string test = "[词组]\n统计局\n";
+        std::stringstream ss(test);
+        extraIndex = table.loadExtra(ss, TableFormat::Text);
+    }
+    FCITX_ASSERT(extraIndex == 0);
+    table.saveExtra(extraIndex, std::cout, libime::TableFormat::Text);
+    testMatchIndex(table, "xynn", 3);
 }
 
-void testExtraDict() {
+void testOneMatchingWord() {
 
     std::string test = "KeyCode=abcdefghijklmnopqrstuvwxy\n"
                        "Length=4\n"
