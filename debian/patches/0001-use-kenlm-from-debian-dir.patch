@@ -17,7 +17,7 @@ index 89dd191..a7a54be 100644
  
 +find_package(double-conversion)
 +
- add_library(kenlm STATIC ${KENLM_SRCS})
+ add_library(kenlm OBJECT ${KENLM_SRCS})
  target_include_directories(kenlm PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/kenlm>)
  target_compile_definitions(kenlm PUBLIC -DKENLM_MAX_ORDER=3 PRIVATE -DNDEBUG)
 -target_link_libraries(kenlm PUBLIC Boost::boost PkgConfig::ZSTD)

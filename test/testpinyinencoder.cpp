@@ -4,10 +4,15 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
+#include "libime/core/segmentgraph.h"
 #include "libime/pinyin/pinyincorrectionprofile.h"
 #include "libime/pinyin/pinyinencoder.h"
+#include "libime/pinyin/shuangpinprofile.h"
+#include <cstddef>
 #include <fcitx-utils/log.h>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace libime;
@@ -233,6 +238,8 @@ int main() {
     check("zhuna", PinyinFuzzyFlag::Inner, {"zhu", "na"});
     check("zhuna", PinyinFuzzyFlag::Inner, {"zhun", "a"});
 
+    check("sangeren", PinyinFuzzyFlag::Inner, {"san", "ge", "ren"});
+
     {
         PinyinCorrectionProfile profile(BuiltinPinyinCorrectionProfile::Qwerty);
         auto graph = PinyinEncoder::parseUserPinyin(
@@ -247,6 +254,25 @@ int main() {
         graph = PinyinEncoder::parseUserPinyin("suang", &profile,
                                                PinyinFuzzyFlag::Correction);
         dfs(graph, {"suan", "g"});
+    }
+
+    {
+        ShuangpinProfile sp(ShuangpinBuiltinProfile::Xiaohe);
+        PinyinCorrectionProfile profile(BuiltinPinyinCorrectionProfile::Qwerty);
+
+        auto graph = PinyinEncoder::parseUserShuangpin(
+            "xnqiee", sp, PinyinFuzzyFlag::Correction);
+        dfs(graph, {"xn", "qi", "ee"});
+        graph = PinyinEncoder::parseUserShuangpin("znwiee", sp,
+                                                  PinyinFuzzyFlag::Correction);
+        dfs(graph, {"z", "nw", "ie", "e"});
+
+        graph = PinyinEncoder::parseUserShuangpin("wokeyityxxboli", sp,
+                                                  PinyinFuzzyFlag::Correction);
+        dfs(graph, {"wo", "ke", "yi", "ty", "xx", "bo", "li"});
+        graph = PinyinEncoder::parseUserShuangpin("wokeyityxzboli", sp,
+                                                  PinyinFuzzyFlag::Correction);
+        dfs(graph, {"wo", "ke", "yi", "ty", "x", "z", "bo", "li"});
     }
 
     return 0;

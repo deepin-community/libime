@@ -1,9 +1,9 @@
-set(LM_TAR "lm_sc.arpa-20230712.tar.xz")
+set(LM_TAR "lm_sc.arpa-20250113.tar.zst")
 # Use our own file server for convenience.
 set(LM_URL "https://download.fcitx-im.org/data/${LM_TAR}")
 
 fcitx5_download(lm-download ${LM_URL} ${LM_TAR}
-                badd62c16c6373787a0fda8f09cd452d12f60d5868856f651ceecf1a07baba32)
+                ee83ecf20d52e8bccdba4cf6cd57183d53c257713a5eb77ee3a63d50fc3796dd)
 fcitx5_extract(lm-extract ${LM_TAR} DEPENDS lm-download
                OUTPUT lm_sc.arpa)
 
@@ -25,11 +25,11 @@ add_custom_target(lm-predict ALL DEPENDS "${LM_PREDICT_OUTPUT}")
 install(FILES "${LM_OUTPUT}" RENAME zh_CN.lm DESTINATION "${LIBIME_INSTALL_LIBDATADIR}")
 install(FILES "${LM_PREDICT_OUTPUT}" RENAME zh_CN.lm.predict DESTINATION "${LIBIME_INSTALL_LIBDATADIR}")
 
-set(DICT_TAR "dict-20240416.tar.zst")
+set(DICT_TAR "dict-20250327.tar.zst")
 set(DICT_URL "https://download.fcitx-im.org/data/${DICT_TAR}")
 
 fcitx5_download(dict-download ${DICT_URL} ${DICT_TAR}
-               9c262cbfa306cb4c3b055991b7e22b453e0f267f20ceb5d9d9e5f8fbe4f2d367)
+               7ca6be4754c0d4c27ba7702c0dce651659bd2ca1faa5cbf2848d81a0053c8c13)
 fcitx5_extract(dict-extract ${DICT_TAR} DEPENDS dict-download
                OUTPUT dict_sc.txt dict_extb.txt)
 
@@ -49,12 +49,12 @@ add_custom_command(
 add_custom_target(dict ALL DEPENDS "${DICT_OUTPUT}" "${DICT_EXTB_OUTPUT}")
 install(FILES "${DICT_OUTPUT}" "${DICT_EXTB_OUTPUT}" DESTINATION "${LIBIME_INSTALL_PKGDATADIR}")
 
-set(TABLE_DICT_URL "https://download.fcitx-im.org/data/table-20240108.tar.gz")
-set(TABLE_DICT_TAR "table-20240108.tar.gz")
+set(TABLE_DICT_TAR "table-20240108.tar.zst")
+set(TABLE_DICT_URL "https://download.fcitx-im.org/data/${TABLE_DICT_TAR}")
 set(TABLE_TXT_FILES db.txt erbi.txt qxm.txt wanfeng.txt
                       wbpy.txt wbx.txt zrm.txt cj.txt)
 fcitx5_download(table-dict-download ${TABLE_DICT_URL} ${TABLE_DICT_TAR}
-                729c596d86907de727c74d0fc3fd241c406c5debd2b4cb74eefe022387ee9dae)
+                3e9d87b04a393f131723472c8eaa860dd23c378a3d4f6a9005513b2a95b3614b)
 fcitx5_extract(table-dict-extract ${TABLE_DICT_TAR} DEPENDS table-dict-download
                OUTPUT ${TABLE_TXT_FILES})
 

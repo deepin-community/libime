@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.7)
-project(libime VERSION 1.1.8)
+cmake_minimum_required(VERSION 3.12)
+project(libime VERSION 1.1.10)
 set(LibIME_VERSION ${PROJECT_VERSION})
 
 find_package(ECM 1.0 REQUIRED)
@@ -8,11 +8,13 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${C
 #########################################
 # Options
 #########################################
+option(BUILD_SHARED_LIBS "Build library as shared libs" On)
 option(ENABLE_TEST "Build Test" On)
 option(ENABLE_COVERAGE "Build the project with gcov support (Need ENABLE_TEST=On)" Off)
 set(GCOV_TOOL "gcov" CACHE STRING "Path to gcov tool used by coverage.")
 option(ENABLE_DOC "Build doxygen" Off)
 option(ENABLE_DATA "Build data" On)
+option(ENABLE_TOOLS "Build tools" On)
 
 #########################################
 # Dependency
@@ -34,7 +36,19 @@ pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET "libzstd")
 find_package(Fcitx5Utils REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 
-find_package(Boost 1.61 REQUIRED COMPONENTS iostreams filesystem)
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+#include <filesystem>
+int main() {
+    return std::filesystem::absolute(\".\").string()[0] == '/';
+}
+" HAS_STD_FILESYSTEM)
+
+find_package(Boost 1.61 REQUIRED COMPONENTS iostreams)
+if (NOT HAS_STD_FILESYSTEM)
+    find_package(Boost REQUIRED COMPONENTS filesystem)
+endif()
+
 set(LIBIME_INSTALL_PKGDATADIR "${CMAKE_INSTALL_FULL_DATADIR}/libime")
 set(LIBIME_INSTALL_LIBDATADIR "${CMAKE_INSTALL_FULL_LIBDIR}/libime")
 
@@ -56,7 +70,10 @@ if(ENABLE_TEST)
 endif()
 
 add_subdirectory(src)
-add_subdirectory(tools)
+
+if (ENABLE_TOOLS)
+  add_subdirectory(tools)
+endif()
 
 if (ENABLE_DATA)
   add_subdirectory(data)

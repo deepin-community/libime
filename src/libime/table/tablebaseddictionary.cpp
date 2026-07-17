@@ -24,6 +24,7 @@
 #include <fcitx-utils/stringutils.h>
 #include <fcitx-utils/utf8.h>
 #include <fstream>
+#include <iterator>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -275,7 +276,7 @@ bool TableBasedDictionaryPrivate::matchTrie(
                     auto curPos = position;
                     auto strCode = fcitx::utf8::UCS4ToUTF8(code);
                     auto result = trie.traverse(strCode, curPos);
-                    if (!trie.isNoPath(result)) {
+                    if (!DATrie<unsigned int>::isNoPath(result)) {
                         newPositions.push_back(curPos);
                     }
                 }
@@ -286,7 +287,7 @@ bool TableBasedDictionaryPrivate::matchTrie(
                     std::distance(charRange.first, charRange.second));
                 auto curPos = position;
                 auto result = trie.traverse(chr, curPos);
-                if (!trie.isNoPath(result)) {
+                if (!DATrie<unsigned int>::isNoPath(result)) {
                     newPositions.push_back(curPos);
                 }
             }
@@ -407,7 +408,7 @@ TableBasedDictionaryPrivate::parseDataLine(std::string_view buf, bool user) {
     }
 
     uint32_t firstChar;
-    const auto *next =
+    std::string_view::iterator next =
         fcitx::utf8::getNextChar(key.begin(), key.end(), &firstChar);
     auto *iter = std::find(std::begin(special), std::end(special), firstChar);
     PhraseFlag flag = user ? PhraseFlag::User : PhraseFlag::None;
@@ -1082,7 +1083,8 @@ size_t TableBasedDictionary::loadExtra(std::istream &in, TableFormat format) {
                 continue;
             }
             boost::trim_if(buf, isSpaceCheck);
-            if (buf == ExtraDictPhraseMark) {
+            if (buf == strConst[0][STR_PHRASE] ||
+                buf == strConst[1][STR_PHRASE]) {
                 state = ExtraDictState::Phrase;
                 continue;
             }
@@ -1326,7 +1328,7 @@ bool TableBasedDictionary::generateWithHint(
                 index = valueLen - ruleEntry.character();
             }
             iter = fcitx::utf8::nextNChar(value.begin(), index);
-            const auto *prev = iter;
+            std::string_view::iterator prev = iter;
             iter = fcitx::utf8::nextChar(iter);
             std::string_view chr(&*prev, std::distance(prev, iter));
 
@@ -1384,8 +1386,8 @@ bool TableBasedDictionary::isInputCode(uint32_t c) const {
 }
 
 bool TableBasedDictionary::isAllInputCode(std::string_view code) const {
-    const auto *iter = code.begin();
-    const auto *end = code.end();
+    std::string_view::iterator iter = code.begin();
+    std::string_view::iterator end = code.end();
     while (iter != end) {
         uint32_t chr;
         iter = fcitx::utf8::getNextChar(iter, end, &chr);
