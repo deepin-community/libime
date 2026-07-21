@@ -1,3 +1,9 @@
+libime (1.1.10+dict20250327-1deepin1) unstable; urgency=medium
+
+  * Restore deepin patches on libime
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 21 Jul 2026 10:48:09 +0800
+
 libime (1.1.10+dict20250327-1) unstable; urgency=medium
 
   * New upstream snapshot with new extb dictionary.
